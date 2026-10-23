@@ -562,19 +562,19 @@ async function submitItem() {
             <div class="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
-                :class="formType === 'found' ? 'bg-[#052e16] text-[#4ade80]' : 'text-[#666666] bg-[#000000]'"
-                @click="formType = 'found'"
-              >
-                我撿到了 (已拾獲)
-              </button>
-              <button
-                type="button"
-                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
-                :class="formType === 'lost' ? 'bg-[#451a03] text-[#ff9000]' : 'text-[#666666] bg-[#000000]'"
+                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm hover:bg-[#ff9000] hover:text-[#000000]"
+                :class="formType === 'lost' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#000000] text-[#ffffff]'"
                 @click="formType = 'lost'"
               >
                 我弄丟了 (正在尋找)
+              </button>
+              <button
+                type="button"
+                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm hover:bg-[#ff9000] hover:text-[#000000]"
+                :class="formType === 'found' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#000000] text-[#ffffff]'"
+                @click="formType = 'found'"
+              >
+                我撿到了 (已拾獲)
               </button>
             </div>
           </div>
@@ -694,7 +694,7 @@ async function submitItem() {
 
         <div v-if="authMode === 'login'" class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">帳號 (Name or Email)</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">帳號 (Name or Email)</label>
             <input
               v-model="loginEmail"
               type="text"
@@ -704,7 +704,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">密碼 (Password)</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">密碼 (Password)</label>
             <input
               v-model="loginPassword"
               type="password"
@@ -714,7 +714,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">驗證碼 (Captcha)</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">驗證碼 (Captcha)</label>
             <div class="flex gap-2 items-center">
               <input
                 v-model="loginCaptchaInput"
@@ -744,7 +744,7 @@ async function submitItem() {
 
         <div v-else class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">暱稱 (Name) *</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">暱稱 (Name) *</label>
             <input
               v-model="registerName"
               type="text"
@@ -754,7 +754,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">帳號 / 電子郵件 (Email) *</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">帳號 / 電子郵件 (Email) *</label>
             <input
               v-model="registerEmail"
               type="email"
@@ -764,7 +764,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">設定密碼 (Password) *</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">設定密碼 (Password) *</label>
             <input
               v-model="registerPassword"
               type="password"
@@ -774,7 +774,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">確認密碼 (Confirm Password) *</label>
+            <label class="block text-xs font-bold text-[#ffffff] mb-1">確認密碼 (Confirm Password) *</label>
             <input
               v-model="registerPasswordConfirm"
               type="password"
