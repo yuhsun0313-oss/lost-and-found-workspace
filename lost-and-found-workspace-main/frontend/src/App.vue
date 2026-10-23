@@ -29,12 +29,8 @@ function openDetail(item) {
   selectedItem.value = item
 }
 
-// 刪除物品（串接後端 API）
+// 刪除物品（點擊直接刪除）
 async function deleteItem(id) {
-  if (!confirm('確定要刪除這筆失物招領資料嗎？')) {
-    return
-  }
-
   try {
     const response = await fetch(`${API_BASE_URL}/items/${id}`, {
       method: 'DELETE',
@@ -61,6 +57,7 @@ const keyword = ref('')
 const category = ref('全部')
 const showForm = ref(false)
 const isLoggedIn = ref(false)
+const currentUser = ref('') // 儲存目前登入的使用者名稱
 const showAuthModal = ref(false)
 const authMode = ref('login')
 
@@ -125,8 +122,10 @@ async function handleLoginSubmit() {
 
     if (response.ok) {
       isLoggedIn.value = true
+      // 優先使用後端回傳的使用者姓名，否則使用輸入的帳號名稱
+      currentUser.value = (data.user && data.user.name) ? data.user.name : loginEmail.value
       showAuthModal.value = false
-      showToast('登入成功', '歡迎回到尋物雷達！')
+      showToast('登入成功', `歡迎回到尋物雷達，${currentUser.value}！`)
     } else {
       showToast('登入失敗', data.message || '登入失敗，請檢查帳號或密碼！')
     }
@@ -196,6 +195,7 @@ function openAuth(mode) {
 
 function handleLogout() {
   isLoggedIn.value = false
+  currentUser.value = ''
   showToast('已登出', '您已成功登出系統。')
 }
 
@@ -336,31 +336,37 @@ async function submitItem() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 text-slate-800">
-    <header class="border-b border-slate-200 bg-white">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-        <a href="/" class="text-xl font-black text-indigo-600">◈ 尋物雷達</a>
+  <div class="min-h-screen bg-[#000000] text-[#ffffff]">
+    <!-- 頂部導覽列 (無邊框無陰影) -->
+    <header class="sticky top-0 z-40 bg-[#121212]">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
+        <a href="/" class="text-lg font-black text-[#ff9000] sm:text-xl flex items-center gap-1 tracking-wider">
+          ◈ 尋物雷達
+        </a>
         
-        <!-- 獨立的登入、註冊與刊登按鈕 -->
+        <!-- 獨立按鈕區塊 -->
         <div class="flex items-center gap-2 sm:gap-3">
           <template v-if="!isLoggedIn">
             <button
-              class="rounded-xl border border-indigo-600 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition"
+              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#ff9000] hover:bg-[#ff9000] hover:text-[#000000] transition sm:px-4 sm:py-2 sm:text-sm"
               @click="openAuth('login')"
             >
               登入
             </button>
             <button
-              class="rounded-xl border border-indigo-600 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition"
+              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#ff9000] hover:bg-[#ff9000] hover:text-[#000000] transition sm:px-4 sm:py-2 sm:text-sm"
               @click="openAuth('register')"
             >
               註冊
             </button>
           </template>
           <template v-else>
-            <span class="text-xs sm:text-sm font-semibold text-slate-600 hidden sm:inline">已登入</span>
+            <!-- 動態顯示使用者名稱 -->
+            <span class="text-xs font-bold text-[#ff9000] sm:text-sm max-w-[100px] sm:max-w-[150px] truncate">
+              👤 {{ currentUser }}
+            </span>
             <button
-              class="rounded-xl bg-slate-200 px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-300 transition"
+              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#aaaaaa] hover:bg-[#333333] transition sm:px-4 sm:py-2 sm:text-sm"
               @click="handleLogout"
             >
               登出
@@ -368,7 +374,7 @@ async function submitItem() {
           </template>
 
           <button
-            class="rounded-xl bg-indigo-600 px-4 py-2 text-xs sm:text-sm font-bold text-white hover:bg-indigo-700 transition shadow-sm"
+            class="rounded-xl bg-[#ff9000] px-3.5 py-1.5 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition sm:px-4 sm:py-2 sm:text-sm"
             @click="handlePublishClick"
           >
             + 刊登物品
@@ -377,23 +383,24 @@ async function submitItem() {
       </div>
     </header>
 
-    <main class="mx-auto max-w-6xl px-5 py-10">
-      <section class="rounded-3xl bg-indigo-600 px-6 py-12 text-white sm:px-12">
-        <p class="mb-3 text-sm font-bold tracking-widest text-indigo-200">CAMPUS LOST & FOUND</p>
-        <h1 class="text-3xl font-black leading-tight sm:text-5xl">遺失的物品，<br />讓我們幫你找回。</h1>
-        <p class="mt-4 max-w-lg text-sm leading-7 text-indigo-100">
+    <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+      <!-- 主 Banner 區塊 -->
+      <section class="rounded-3xl bg-[#121212] px-6 py-8 text-white sm:px-12 sm:py-12">
+        <p class="mb-2 text-xs font-bold tracking-widest text-[#ff9000] sm:mb-3 sm:text-sm">CAMPUS LOST & FOUND</p>
+        <h1 class="text-2xl font-black leading-tight sm:text-5xl text-[#ffffff]">遺失的物品，<br /><span class="text-[#ff9000]">讓我們幫你找回。</span></h1>
+        <p class="mt-3 max-w-lg text-xs leading-6 text-[#888888] sm:mt-4 sm:text-sm sm:leading-7">
           搜尋校園失物，或刊登拾獲物品。將透過 AI 影像比對，推薦可能的失物配對。
         </p>
 
-        <div class="mt-7 flex max-w-xl flex-col gap-3 sm:flex-row">
+        <div class="mt-6 flex max-w-xl flex-col gap-2.5 sm:mt-7 sm:flex-row sm:gap-3">
           <input
             v-model="keyword"
             type="text"
             placeholder="搜尋耳機、水壺、圖書館..."
-            class="min-w-0 flex-1 rounded-xl bg-white px-4 py-3 text-slate-800 outline-none focus:ring-4 focus:ring-indigo-300"
+            class="min-w-0 flex-1 rounded-xl bg-[#000000] px-4 py-2.5 text-sm text-[#ffffff] outline-none sm:py-3 placeholder-[#555555]"
           />
           <button
-            class="rounded-xl bg-white px-6 py-3 font-bold text-indigo-700 hover:bg-indigo-50"
+            class="rounded-xl bg-[#ff9000] px-6 py-2.5 text-sm font-bold text-[#000000] hover:bg-[#e07f00] transition sm:py-3"
             @click="category = '全部'"
           >
             搜尋物品
@@ -401,13 +408,14 @@ async function submitItem() {
         </div>
       </section>
 
-      <section class="mt-10">
+      <!-- 分類標籤區塊 -->
+      <section class="mt-8 sm:mt-10">
         <div class="flex flex-wrap gap-2">
           <button
             v-for="item in categories"
             :key="item"
-            class="rounded-full border px-4 py-2 text-sm font-semibold transition"
-            :class="category === item ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'"
+            class="rounded-full px-3.5 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm"
+            :class="category === item ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#121212] text-[#888888] hover:text-[#ffffff]'"
             @click="category = item"
           >
             {{ item }}
@@ -415,85 +423,122 @@ async function submitItem() {
         </div>
       </section>
 
+      <!-- 失物網格清單 -->
       <section class="mt-8">
         <div class="mb-5 flex items-end justify-between">
           <div>
-            <h2 class="text-2xl font-black">校園失物列表</h2>
-            <p class="mt-1 text-sm text-slate-500">找找看，有沒有你正在尋找的物品。</p>
+            <h2 class="text-xl font-black text-[#ffffff] sm:text-2xl">校園失物列表</h2>
+            <p class="mt-1 text-xs text-[#666666] sm:text-sm">找找看，有沒有你正在尋找的物品。</p>
           </div>
-          <span class="text-sm text-slate-500">{{ filteredItems.length }} 筆紀錄</span>
+          <span class="text-xs text-[#666666] sm:text-sm">{{ filteredItems.length }} 筆紀錄</span>
         </div>
 
-        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
           <article
             v-for="item in paginatedItems"
             :key="item.id"
-            class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg cursor-pointer"
+            class="overflow-hidden rounded-2xl bg-[#121212] transition hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
             @click="openDetail(item)"
           >
-            <div class="relative h-52 bg-slate-100">
-              <img v-if="item.image" :src="item.image" :alt="item.title" class="h-full w-full object-cover" />
-              <div v-else class="flex h-full items-center justify-center text-slate-400">尚無物品照片</div>
-              <span
-                class="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold"
-                :class="item.type === 'found' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
-              >
-                {{ item.type === 'found' ? '已拾獲' : '正在尋找' }}
-              </span>
+            <div>
+              <div class="relative h-48 sm:h-52 bg-[#000000]">
+                <img v-if="item.image" :src="item.image" :alt="item.title" class="h-full w-full object-cover" />
+                <div v-else class="flex h-full items-center justify-center text-xs text-[#444444] sm:text-sm">尚無物品照片</div>
+                <span
+                  class="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold"
+                  :class="item.type === 'found' ? 'bg-[#052e16] text-[#4ade80]' : 'bg-[#451a03] text-[#ff9000]'"
+                >
+                  {{ item.type === 'found' ? '已拾獲' : '正在尋找' }}
+                </span>
+              </div>
+
+              <div class="p-4 sm:p-5">
+                <p class="text-xs font-bold text-[#ff9000]">{{ item.category }}</p>
+                <h3 class="mt-1.5 text-base font-bold text-[#ffffff] sm:text-lg sm:mt-2">{{ item.title }}</h3>
+
+                <div class="mt-3 space-y-1.5 text-xs text-[#ffffff] sm:mt-4 sm:space-y-2 sm:text-sm">
+                  <!-- 🌟 地點：改為帶有橘色地圖釘 SVG 圖標 -->
+                  <p class="flex items-center gap-2">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    {{ item.location }}
+                  </p>
+
+                  <!-- 🌟 時間：改為帶有橘色行事曆 SVG 圖標 -->
+                  <p class="flex items-center gap-2">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    {{ item.date }}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div class="p-5">
-              <p class="text-xs font-semibold text-indigo-600">{{ item.category }}</p>
-              <h3 class="mt-2 text-lg font-bold">{{ item.title }}</h3>
-              <div class="mt-4 space-y-2 text-sm text-slate-500">
-                <p>📍 {{ item.location }}</p>
-                <p>📅 {{ item.date }}</p>
-              </div>
-              <div class="mt-5 w-full text-center rounded-xl border border-indigo-200 py-2.5 text-sm font-bold text-indigo-700 hover:bg-indigo-50">
+            <div class="p-4 pt-0 sm:p-5 sm:pt-0">
+              <div class="w-full text-center rounded-xl bg-[#1e1e1e] py-2 text-xs font-bold text-[#ff9000] hover:bg-[#ff9000] hover:text-[#000000] transition sm:py-2.5 sm:text-sm">
                 查看詳細內容
               </div>
             </div>
           </article>
         </div>
 
-        <div v-if="totalPages > 1" class="mt-10 flex justify-center items-center gap-2">
-          <button :disabled="currentPage === 1" @click="currentPage--" class="px-4 py-2 border rounded-xl bg-white">&lt;</button>
-          <button v-for="page in totalPages" :key="page" @click="currentPage = page" :class="currentPage === page ? 'bg-indigo-600 text-white' : 'bg-white border'" class="px-4 py-2 rounded-xl font-bold">
+        <!-- 分頁控制 -->
+        <div v-if="totalPages > 1" class="mt-8 flex justify-center items-center gap-2 sm:mt-10">
+          <button :disabled="currentPage === 1" @click="currentPage--" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm">&lt;</button>
+          <button v-for="page in totalPages" :key="page" @click="currentPage = page" :class="currentPage === page ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#121212] text-[#888888]'" class="px-3 py-1.5 rounded-xl text-xs font-bold sm:px-4 sm:py-2 sm:text-sm">
             {{ page }}
           </button>
-          <button :disabled="currentPage === totalPages" @click="currentPage++" class="px-4 py-2 border rounded-xl bg-white">&gt;</button>
+          <button :disabled="currentPage === totalPages" @click="currentPage++" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm">&gt;</button>
         </div>
 
-        <p v-if="filteredItems.length === 0" class="py-16 text-center text-slate-500">
+        <p v-if="filteredItems.length === 0" class="py-16 text-center text-sm text-[#555555]">
           找不到符合條件的物品，試試其他關鍵字。
         </p>
       </section>
     </main>
 
-    <!-- 詳細資料與刪除視窗 -->
+    <!-- 詳細資料視窗 -->
     <div
       v-if="selectedItem"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
       @click.self="selectedItem = null"
     >
-      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="w-full max-w-md rounded-2xl bg-[#121212] p-5 max-h-[90vh] overflow-y-auto sm:p-6">
         <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-semibold text-indigo-600">{{ selectedItem.category }}</span>
-          <button class="text-slate-400 hover:text-slate-600 font-bold" @click="selectedItem = null">✕ 關閉</button>
+          <span class="text-xs font-bold text-[#ff9000]">{{ selectedItem.category }}</span>
+          <button class="text-[#666666] hover:text-[#ffffff] font-bold text-sm" @click="selectedItem = null">✕ 關閉</button>
         </div>
 
-        <div class="relative h-52 overflow-hidden rounded-xl bg-slate-100 mb-4">
+        <div class="relative h-48 overflow-hidden rounded-xl bg-[#000000] mb-4 sm:h-52">
           <img v-if="selectedItem.image" :src="selectedItem.image" :alt="selectedItem.title" class="h-full w-full object-cover" />
-          <div v-else class="flex h-full items-center justify-center text-slate-400">尚無物品照片</div>
+          <div v-else class="flex h-full items-center justify-center text-sm text-[#444444]">尚無物品照片</div>
         </div>
 
-        <h2 class="text-xl font-black mb-2">{{ selectedItem.title }}</h2>
-        <p class="text-sm text-slate-600 mb-1">📍 地點：{{ selectedItem.location }}</p>
-        <p class="text-sm text-slate-600 mb-6">📅 時間：{{ selectedItem.date }}</p>
+        <h2 class="text-lg font-black text-[#ffffff] mb-2 sm:text-xl">{{ selectedItem.title }}</h2>
+        <!-- 地點行 -->
+        <p class="text-xs text-[#ffffff] mb-1 sm:text-sm flex items-center gap-2">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+          地點：{{ selectedItem.location }}
+        </p>
 
+          <!-- 時間行 --> 
+        <p class="text-xs text-[#ffffff] mb-6 sm:text-sm flex items-center gap-2">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
+          時間：{{ selectedItem.date }}
+        </p>
+
+        <!-- 點擊直接刪除 -->
         <button
           type="button"
-          class="w-full rounded-xl border border-rose-200 bg-rose-50 py-3 text-sm font-bold text-rose-600 hover:bg-rose-100 transition"
+          class="w-full rounded-xl bg-[#3f0f15] py-2.5 text-xs font-bold text-[#f87171] hover:bg-[#5f131d] transition sm:py-3 sm:text-sm"
           @click="deleteItem(selectedItem.id)"
         >
           已找到，確定刪除？
@@ -504,52 +549,52 @@ async function submitItem() {
     <!-- 刊登表單視窗 -->
     <div
       v-if="showForm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
       @click.self="showForm = false"
     >
-      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-        <h2 class="text-xl font-black">刊登失物 / 拾獲物品</h2>
-        <p class="mt-1 text-sm text-slate-500">填寫詳細資訊，讓失主或拾獲人更容易找到。</p>
+      <div class="w-full max-w-lg rounded-2xl bg-[#121212] p-5 max-h-[90vh] overflow-y-auto sm:p-6">
+        <h2 class="text-lg font-black text-[#ffffff] sm:text-xl">刊登失物 / 拾獲物品</h2>
+        <p class="mt-1 text-xs text-[#888888] sm:text-sm">填寫詳細資訊，讓失主或拾獲人更容易找到。</p>
 
         <div class="mt-5 space-y-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">類型</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">類型</label>
             <div class="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                class="py-2.5 rounded-xl text-sm font-bold border transition"
-                :class="formType === 'found' ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-600'"
+                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
+                :class="formType === 'found' ? 'bg-[#052e16] text-[#4ade80]' : 'text-[#666666] bg-[#000000]'"
                 @click="formType = 'found'"
               >
-                🟢 我撿到了 (已拾獲)
+                我撿到了 (已拾獲)
               </button>
               <button
                 type="button"
-                class="py-2.5 rounded-xl text-sm font-bold border transition"
-                :class="formType === 'lost' ? 'border-amber-600 bg-amber-50 text-amber-700' : 'border-slate-200 text-slate-600'"
+                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
+                :class="formType === 'lost' ? 'bg-[#451a03] text-[#ff9000]' : 'text-[#666666] bg-[#000000]'"
                 @click="formType = 'lost'"
               >
-                🟠 我弄丟了 (正在尋找)
+                我弄丟了 (正在尋找)
               </button>
             </div>
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">物品名稱 *</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">物品名稱 *</label>
             <input
               v-model="formTitle"
               type="text"
               placeholder="例如：黑色筆電包、學生證"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">分類</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">分類</label>
             <select
               v-model="formCategory"
               required
-              class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] text-[#ffffff] px-4 py-2 text-sm outline-none sm:py-2.5"
             >
               <option value="" disabled selected>請選擇物品分類</option>
               <option value="電子產品">電子產品</option>
@@ -560,37 +605,37 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">地點 *</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">地點 *</label>
             <input
               v-model="formLocation"
               type="text"
               placeholder="例如：圖書館 3 樓、體育館外"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">日期</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">日期</label>
             <input
               v-model="formDate"
               type="datetime-local"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">上傳物品照片 (選填)</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">上傳物品照片 (選填)</label>
             <input
               type="file"
               accept="image/*"
-              class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border border-slate-200 rounded-xl p-1"
+              class="w-full text-xs text-[#888888] file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#ff9000] file:text-[#000000] hover:file:bg-[#e07f00] cursor-pointer bg-[#000000] rounded-xl p-1 sm:text-sm"
               @change="handleImageUpload"
             />
-            <div v-if="formImage" class="mt-3 relative h-36 w-full overflow-hidden rounded-xl bg-slate-100 border border-slate-200">
+            <div v-if="formImage" class="mt-3 relative h-36 w-full overflow-hidden rounded-xl bg-[#000000]">
               <img :src="formImage" class="h-full w-full object-cover" />
               <button
                 type="button"
-                class="absolute top-2 right-2 rounded-full bg-slate-900/60 px-2 py-1 text-xs text-white hover:bg-slate-900"
+                class="absolute top-2 right-2 rounded-full bg-[#000000]/80 px-2 py-1 text-xs text-white hover:bg-[#000000]"
                 @click="formImage = ''"
               >
                 ✕ 移除照片
@@ -602,7 +647,7 @@ async function submitItem() {
         <div class="mt-6 flex gap-3">
           <button 
             type="button" 
-            class="flex-1 rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700" 
+            class="flex-1 rounded-xl bg-[#ff9000] py-2.5 font-bold text-[#000000] hover:bg-[#e07f00] text-xs sm:text-sm sm:py-3" 
             @click="submitItem"
           >
             確認送出
@@ -610,7 +655,7 @@ async function submitItem() {
 
           <button
             type="button"
-            class="flex-1 rounded-xl border border-slate-200 py-3 font-bold text-slate-600 hover:bg-slate-100"
+            class="flex-1 rounded-xl bg-[#222222] py-2.5 font-bold text-[#888888] hover:bg-[#333333] hover:text-[#ffffff] text-xs sm:text-sm sm:py-3"
             @click="showForm = false"
           >
             取消
@@ -622,25 +667,25 @@ async function submitItem() {
     <!-- 獨立登入/註冊彈窗 -->
     <div
       v-if="showAuthModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
       @click.self="showAuthModal = false"
     >
-      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-        <button class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 font-bold" @click="showAuthModal = false">✕</button>
+      <div class="w-full max-w-md rounded-2xl bg-[#121212] p-5 relative max-h-[90vh] overflow-y-auto sm:p-6">
+        <button class="absolute right-4 top-4 text-[#666666] hover:text-[#ffffff] font-bold text-sm" @click="showAuthModal = false">✕</button>
 
-        <div class="flex border-b border-slate-200 mb-6">
+        <div class="flex mb-5">
           <button
             type="button"
-            class="flex-1 pb-3 text-center font-bold text-lg border-b-2 transition"
-            :class="authMode === 'login' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'"
+            class="flex-1 pb-3 text-center font-bold text-base sm:text-lg transition"
+            :class="authMode === 'login' ? 'text-[#ff9000]' : 'text-[#555555] hover:text-[#888888]'"
             @click="authMode = 'login'"
           >
             系統登入 Login
           </button>
           <button
             type="button"
-            class="flex-1 pb-3 text-center font-bold text-lg border-b-2 transition"
-            :class="authMode === 'register' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'"
+            class="flex-1 pb-3 text-center font-bold text-base sm:text-lg transition"
+            :class="authMode === 'register' ? 'text-[#ff9000]' : 'text-[#555555] hover:text-[#888888]'"
             @click="authMode = 'register'"
           >
             帳號註冊 Register
@@ -649,48 +694,48 @@ async function submitItem() {
 
         <div v-if="authMode === 'login'" class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">帳號 (Name or Email)</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">帳號 (Name or Email)</label>
             <input
               v-model="loginEmail"
               type="text"
               placeholder="請輸入使用者名稱 或 Email"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">密碼 (Password)</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">密碼 (Password)</label>
             <input
               v-model="loginPassword"
               type="password"
               placeholder="輸入密碼"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">驗證碼 (Captcha)</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">驗證碼 (Captcha)</label>
             <div class="flex gap-2 items-center">
               <input
                 v-model="loginCaptchaInput"
                 type="text"
                 placeholder="4碼英數字"
-                class="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+                class="flex-1 rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
               />
               <div 
-                class="bg-indigo-100 text-indigo-700 font-mono font-black text-lg px-4 py-2 rounded-xl tracking-widest select-none cursor-pointer hover:bg-indigo-200 transition"
+                class="bg-[#222222] text-[#ff9000] font-mono font-black text-base px-3 py-1.5 rounded-xl tracking-widest select-none cursor-pointer hover:bg-[#333333] transition sm:text-lg sm:px-4 sm:py-2"
                 title="點擊更換驗證碼"
                 @click="generateCaptcha"
               >
                 {{ loginCaptchaCode }}
               </div>
             </div>
-            <p class="text-xs text-rose-500 mt-1">(驗證碼不分大小寫)</p>
+            <p class="text-xs text-[#f87171] mt-1">(驗證碼不分大小寫)</p>
           </div>
 
           <button
             type="button"
-            class="w-full rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 transition mt-2"
+            class="w-full rounded-xl bg-[#ff9000] py-2.5 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition mt-2 sm:py-3 sm:text-sm"
             @click="handleLoginSubmit"
           >
             登入 (Login)
@@ -699,48 +744,48 @@ async function submitItem() {
 
         <div v-else class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">暱稱 (Name) *</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">暱稱 (Name) *</label>
             <input
               v-model="registerName"
               type="text"
               placeholder="請輸入姓名"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">帳號 / 電子郵件 (Email) *</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">帳號 / 電子郵件 (Email) *</label>
             <input
               v-model="registerEmail"
               type="email"
               placeholder="例如 s10912345@school.edu.tw"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">設定密碼 (Password) *</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">設定密碼 (Password) *</label>
             <input
               v-model="registerPassword"
               type="password"
               placeholder="請輸入密碼"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">確認密碼 (Confirm Password) *</label>
+            <label class="block text-xs font-bold text-[#888888] mb-1">確認密碼 (Confirm Password) *</label>
             <input
               v-model="registerPasswordConfirm"
               type="password"
               placeholder="再次輸入密碼"
-              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
             />
           </div>
 
           <button
             type="button"
-            class="w-full rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 transition mt-2"
+            class="w-full rounded-xl bg-[#ff9000] py-2.5 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition mt-2 sm:py-3 sm:text-sm"
             @click="handleRegisterSubmit"
           >
             註冊帳號 (Register)
@@ -749,18 +794,18 @@ async function submitItem() {
       </div>
     </div>
 
-    <!-- 統一的浮動提示視窗 (Toast / Alert Modal) -->
+    <!-- 統一的浮動提示視窗 (Toast Modal) -->
     <div
       v-if="toastModal.show"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
       @click.self="toastModal.show = false"
     >
-      <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center">
-        <h3 class="text-lg font-black text-slate-800 mb-2">{{ toastModal.title }}</h3>
-        <p class="text-sm text-slate-600 mb-6 whitespace-pre-line leading-relaxed">{{ toastModal.message }}</p>
+      <div class="w-full max-w-sm rounded-2xl bg-[#121212] p-5 text-center sm:p-6">
+        <h3 class="text-base font-black text-[#ff9000] mb-2 sm:text-lg">{{ toastModal.title }}</h3>
+        <p class="text-xs text-[#cccccc] mb-5 whitespace-pre-line leading-relaxed sm:text-sm sm:mb-6">{{ toastModal.message }}</p>
         <button
           type="button"
-          class="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition"
+          class="w-full rounded-xl bg-[#ff9000] py-2 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition sm:py-2.5 sm:text-sm"
           @click="toastModal.show = false"
         >
           確定
