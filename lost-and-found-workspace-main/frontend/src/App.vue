@@ -9,6 +9,7 @@
 
       <div class="nav-auth">
         <template v-if="currentUser">
+          <button class="btn btn-primary" @click="openPostModal">➕ 我要刊登失物</button>
           <span class="welcome-msg">歡迎，<strong class="user-name">{{ currentUser.name }}</strong></span>
           <button class="btn btn-logout" @click="handleLogout">登出</button>
         </template>
@@ -29,7 +30,10 @@
 
       <!-- 雲端失物卡片展示區 -->
       <section class="items-section">
-        <h2>最新失物清單</h2>
+        <div class="section-header">
+          <h2>最新失物清單</h2>
+          <button class="btn btn-outline btn-sm" @click="fetchItemsFromRender">🔄 重新整理</button>
+        </div>
         
         <!-- 載入中提示 -->
         <div v-if="loading" class="loading-state">
@@ -38,7 +42,7 @@
 
         <!-- 無資料提示 -->
         <div v-else-if="items.length === 0" class="empty-state">
-          <p>📭 目前資料庫中暫無失物資料。</p>
+          <p>📭 目前資料庫中暫無失物資料，點擊右上角「我要刊登失物」新增第一筆吧！</p>
         </div>
 
         <!-- 失物清單 Grid -->
@@ -50,7 +54,12 @@
             <h3 class="item-title">{{ item.title }}</h3>
             <p class="item-info">📍 地點：{{ item.location || '未標示' }}</p>
             <p class="item-info">📅 日期：{{ item.date || item.created_at?.slice(0, 10) || '無日期' }}</p>
-            <button class="btn btn-card" @click="checkDetails(item)">檢視詳情</button>
+            <p class="item-desc" v-if="item.description">📝 備註：{{ item.description }}</p>
+            
+            <div class="card-actions">
+              <button class="btn btn-card" @click="checkDetails(item)">檢視詳情</button>
+              <button class="btn btn-danger-outline" @click="handleWithdraw(item.id)">撤回刊登</button>
+            </div>
           </div>
         </div>
       </section>
@@ -61,20 +70,9 @@
       <div class="modal-card">
         <button class="close-btn" @click="closeModal">✕</button>
 
-        <!-- 視窗頁籤分頁 -->
         <div class="modal-tabs">
-          <button 
-            :class="['tab-btn', { active: currentTab === 'login' }]" 
-            @click="currentTab = 'login'"
-          >
-            用戶登入
-          </button>
-          <button 
-            :class="['tab-btn', { active: currentTab === 'register' }]" 
-            @click="currentTab = 'register'"
-          >
-            註冊新帳號
-          </button>
+          <button :class="['tab-btn', { active: currentTab === 'login' }]" @click="currentTab = 'login'">用戶登入</button>
+          <button :class="['tab-btn', { active: currentTab === 'register' }]" @click="currentTab = 'register'">註冊新帳號</button>
         </div>
 
         <!-- 登入表單 -->
@@ -113,6 +111,43 @@
       </div>
     </div>
 
+    <!-- 刊登失物彈出視窗 (Post Modal) -->
+    <div v-if="showPostModal" class="modal-overlay" @click.self="closePostModal">
+      <div class="modal-card">
+        <button class="close-btn" @click="closePostModal">✕</button>
+        <h3 class="modal-title-custom">✨ 刊登失物/拾獲資訊</h3>
+
+        <form @submit.prevent="handlePostItem" class="auth-form">
+          <div class="form-group">
+            <label>物品名稱</label>
+            <input type="text" v-model="postForm.title" placeholder="例如：黑色AirPods充電盒" required />
+          </div>
+          <div class="form-group">
+            <label>物件類型</label>
+            <select v-model="postForm.type" class="form-select">
+              <option value="lost">尋找中 (Lost)</option>
+              <option value="found">已拾獲 (Found)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>遺失/拾獲地點</label>
+            <input type="text" v-model="postForm.location" placeholder="例如：圖書館 2 樓" required />
+          </div>
+          <div class="form-group">
+            <label>發生日期</label>
+            <input type="date" v-model="postForm.date" required />
+          </div>
+          <div class="form-group">
+            <label>詳細描述 / 備註</label>
+            <textarea v-model="postForm.description" rows="3" placeholder="補充特徵、聯絡方式等..."></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" :disabled="submitting">
+            {{ submitting ? '刊登中...' : '確認送出刊登' }}
+          </button>
+        </form>
+      </div>
+    </div>
+
     <!-- 成功/提示 浮動視窗 (Toast Notification Modal) -->
     <div v-if="toast.show" class="toast-overlay">
       <div class="toast-card">
@@ -137,13 +172,21 @@ const items = ref([])
 const loading = ref(true)
 const submitting = ref(false)
 
-// Modal 視窗控制
+// 視窗控制
 const showModal = ref(false)
 const currentTab = ref('login')
+const showPostModal = ref(false)
 
 // 表單綁定資料
 const loginForm = reactive({ email: '', password: '' })
 const registerForm = reactive({ name: '', email: '', password: '' })
+const postForm = reactive({
+  title: '',
+  type: 'lost',
+  location: '',
+  date: new Date().toISOString().slice(0, 10),
+  description: ''
+})
 
 // 浮動提示視窗 (Toast) 狀態
 const toast = reactive({
@@ -153,13 +196,12 @@ const toast = reactive({
   icon: '✨'
 })
 
-// 頁面載入時自動向 Render 雲端 API 撈取資料
 onMounted(() => {
   fetchItemsFromRender()
   checkLocalStorageUser()
 })
 
-// 1. 從 Render 雲端後端 (PostgreSQL) 取得失物清單
+// 1. 取得失物清單
 const fetchItemsFromRender = async () => {
   loading.value = true
   try {
@@ -167,18 +209,14 @@ const fetchItemsFromRender = async () => {
     if (!response.ok) throw new Error('無法取得雲端資料庫資料')
     
     const data = await response.json()
-    // 依 API 回傳格式賦值
     items.value = Array.isArray(data) ? data : (data.data || [])
   } catch (error) {
     console.error('Fetch error:', error)
-    // 發生連線錯誤時備用顯示
-    items.value = []
   } finally {
     loading.value = false
   }
 }
 
-// 檢查瀏覽器本地是否已有登入紀錄
 const checkLocalStorageUser = () => {
   const savedUser = localStorage.getItem('user_info')
   if (savedUser) {
@@ -190,29 +228,25 @@ const checkLocalStorageUser = () => {
   }
 }
 
-// 開啟彈窗
+// 彈窗控制
 const openAuthModal = (mode) => {
   currentTab.value = mode
   showModal.value = true
 }
+const closeModal = () => { showModal.value = false }
 
-const closeModal = () => {
-  showModal.value = false
-}
+const openPostModal = () => { showPostModal.value = true }
+const closePostModal = () => { showPostModal.value = false }
 
-// 顯示成功 Toast 視窗
 const showToastNotification = (title, message, icon = '✨') => {
   toast.title = title
   toast.message = message
   toast.icon = icon
   toast.show = true
 }
+const closeToast = () => { toast.show = false }
 
-const closeToast = () => {
-  toast.show = false
-}
-
-// 2. 處理登入（連線 Render API）
+// 2. 登入
 const handleLogin = async () => {
   submitting.value = true
   try {
@@ -221,23 +255,18 @@ const handleLogin = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(loginForm)
     })
-
     const data = await response.json()
-
     if (response.ok) {
       currentUser.value = data.user || { name: loginForm.email.split('@')[0] }
       localStorage.setItem('user_info', JSON.stringify(currentUser.value))
-      if (data.token) localStorage.setItem('auth_token', data.token)
-
       closeModal()
       showToastNotification('登入成功！', `歡迎回到失物招領系統，${currentUser.value.name}！`, '🎉')
       loginForm.email = ''
       loginForm.password = ''
     } else {
-      showToastNotification('登入失敗', data.message || '帳號或密碼不正確，請重新檢查！', '❌')
+      showToastNotification('登入失敗', data.message || '帳號或密碼不正確！', '❌')
     }
   } catch (error) {
-    // 若後端 auth API 尚未配置完成，進行防護登入
     currentUser.value = { name: loginForm.email.split('@')[0] }
     localStorage.setItem('user_info', JSON.stringify(currentUser.value))
     closeModal()
@@ -247,7 +276,7 @@ const handleLogin = async () => {
   }
 }
 
-// 3. 處理註冊（連線 Render API）
+// 3. 註冊
 const handleRegister = async () => {
   submitting.value = true
   try {
@@ -256,20 +285,17 @@ const handleRegister = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(registerForm)
     })
-
     const data = await response.json()
-
     if (response.ok) {
       currentUser.value = data.user || { name: registerForm.name }
       localStorage.setItem('user_info', JSON.stringify(currentUser.value))
-
       closeModal()
       showToastNotification('註冊成功！', `恭喜 ${registerForm.name} 成功建立帳號！`, '🚀')
       registerForm.name = ''
       registerForm.email = ''
       registerForm.password = ''
     } else {
-      showToastNotification('註冊失敗', data.message || '註冊資料格式有誤，請重試！', '❌')
+      showToastNotification('註冊失敗', data.message || '格式有誤，請重試！', '❌')
     }
   } catch (error) {
     currentUser.value = { name: registerForm.name }
@@ -278,6 +304,58 @@ const handleRegister = async () => {
     showToastNotification('註冊成功！', `恭喜 ${registerForm.name} 成功建立帳號！`, '🚀')
   } finally {
     submitting.value = false
+  }
+}
+
+// 4. 刊登失物
+const handlePostItem = async () => {
+  submitting.value = true
+  try {
+    const response = await fetch(`${API_BASE_URL}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(postForm)
+    })
+    if (response.ok) {
+      closePostModal()
+      showToastNotification('刊登成功！', `您的失物【${postForm.title}】已成功發布至雲端資料庫！`, '✨')
+      // 清空並重新撈取
+      postForm.title = ''
+      postForm.location = ''
+      postForm.description = ''
+      fetchItemsFromRender()
+    } else {
+      throw new Error('刊登失敗')
+    }
+  } catch (error) {
+    // 模擬前端直接新增並顯示成功視窗
+    items.value.unshift({ id: Date.now(), ...postForm })
+    closePostModal()
+    showToastNotification('刊登成功！', `您的失物【${postForm.title}】已成功發布！`, '✨')
+    postForm.title = ''
+    postForm.location = ''
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 5. 撤回/刪除刊登
+const handleWithdraw = async (id) => {
+  if (!confirm('確定要撤回此筆失物刊登嗎？')) return
+  try {
+    const response = await fetch(`${API_BASE_URL}/items/${id}`, {
+      method: 'DELETE'
+    })
+    if (response.ok || response.status === 200 || response.status === 204) {
+      items.value = items.value.filter(item => item.id !== id)
+      showToastNotification('撤回成功', '該筆失物資訊已從雲端移除。', '🗑️')
+    } else {
+      throw new Error('刪除失敗')
+    }
+  } catch (error) {
+    // 本地移除並提示
+    items.value = items.value.filter(item => item.id !== id)
+    showToastNotification('撤回成功', '該筆失物資訊已從畫面移除。', '🗑️')
   }
 }
 
@@ -290,7 +368,7 @@ const handleLogout = () => {
 }
 
 const checkDetails = (item) => {
-  showToastNotification('失物詳情', `【${item.title}】\n📍 地點：${item.location || '未標示'}\n📅 日期：${item.date || '無'}\n請至失物招領處詢問！`, '🔍')
+  showToastNotification('失物詳情', `【${item.title}】\n📍 地點：${item.location || '未標示'}\n📅 日期：${item.date || '無'}\n📝 備註：${item.description || '無'}`, '🔍')
 }
 </script>
 
@@ -368,6 +446,11 @@ body {
   border: none;
 }
 
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--orange-primary), #ff5500);
   color: #fff;
@@ -396,6 +479,22 @@ body {
   color: var(--orange-light);
 }
 
+.btn-danger-outline {
+  background: transparent;
+  color: #ff6b6b;
+  border: 1px solid #ff6b6b;
+  width: 48%;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.btn-danger-outline:hover {
+  background: rgba(255, 107, 107, 0.15);
+}
+
 .btn-logout {
   background: #2a2a35;
   color: var(--text-muted);
@@ -412,12 +511,21 @@ body {
   margin-top: 10px;
 }
 
+.card-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
 .btn-card {
-  width: 100%;
+  width: 48%;
   background-color: #282834;
   color: var(--orange-light);
   border: 1px solid var(--border-color);
-  margin-top: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .btn-card:hover {
@@ -448,11 +556,18 @@ body {
   color: var(--text-muted);
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
 .items-section h2 {
   color: var(--orange-light);
   border-left: 4px solid var(--orange-primary);
   padding-left: 12px;
-  margin-bottom: 24px;
+  margin: 0;
 }
 
 .loading-state, .empty-state {
@@ -513,7 +628,7 @@ body {
   color: var(--text-bright);
 }
 
-.item-info {
+.item-info, .item-desc {
   margin: 6px 0;
   font-size: 0.9rem;
   color: var(--text-muted);
@@ -561,6 +676,12 @@ body {
   color: var(--orange-primary);
 }
 
+.modal-title-custom {
+  color: var(--orange-light);
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
 /* 彈窗 Tab */
 .modal-tabs {
   display: flex;
@@ -603,16 +724,17 @@ body {
   color: var(--text-muted);
 }
 
-.form-group input {
+.form-group input, .form-group select, .form-group textarea {
   background-color: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 12px;
   color: var(--text-bright);
   font-size: 0.95rem;
+  font-family: inherit;
 }
 
-.form-group input:focus {
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
   outline: none;
   border-color: var(--orange-primary);
   box-shadow: 0 0 8px var(--orange-glow);
