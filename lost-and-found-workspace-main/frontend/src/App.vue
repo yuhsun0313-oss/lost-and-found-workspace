@@ -1,800 +1,771 @@
-<template>
-  <div id="app" class="dark-orange-theme">
-    <!-- 頂部導覽列 (Navbar) -->
-    <header class="navbar">
-      <div class="logo">
-        <span class="icon">🔍</span>
-        <span class="title">失物招領系統</span>
-      </div>
+<script setup>
+import { computed, ref, onMounted } from 'vue'
 
-      <div class="nav-auth">
-        <template v-if="currentUser">
-          <button class="btn btn-primary" @click="openPostModal">➕ 我要刊登失物</button>
-          <span class="welcome-msg">歡迎，<strong class="user-name">{{ currentUser.name }}</strong></span>
-          <button class="btn btn-logout" @click="handleLogout">登出</button>
-        </template>
-        <template v-else>
-          <!-- 獨立按鈕：登入與註冊 -->
-          <button class="btn btn-outline" @click="openAuthModal('login')">登入</button>
-          <button class="btn btn-primary" @click="openAuthModal('register')">註冊帳號</button>
-        </template>
+// 雲端後端 API 基底網址
+const API_BASE_URL = 'https://lost-and-found-workspace.onrender.com/api'
+
+// 載入後端資料庫的物品清單
+async function fetchItems() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/items`)
+    if (response.ok) {
+      const data = await response.json()
+      items.value = data
+    }
+  } catch (error) {
+    console.error('無法載入失物清單：', error)
+  }
+}
+
+// 網頁一載入就從資料庫抓取資料
+onMounted(() => {
+  fetchItems()
+})
+
+// 控制詳細資料浮動視窗的變數
+const selectedItem = ref(null)
+
+function openDetail(item) {
+  selectedItem.value = item
+}
+
+// 刪除物品（串接後端 API）
+async function deleteItem(id) {
+  if (!confirm('確定要刪除這筆失物招領資料嗎？')) {
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/items/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
+
+    if (response.ok) {
+      showToast('刪除成功', '該筆失物招領資料已成功刪除！')
+      await fetchItems()
+      selectedItem.value = null // 關閉詳細視窗
+    } else {
+      const data = await response.json()
+      showToast('刪除失敗', data.message || '刪除失敗！')
+    }
+  } catch (error) {
+    console.error('刪除錯誤：', error)
+    showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  }
+}
+
+const keyword = ref('')
+const category = ref('全部')
+const showForm = ref(false)
+const isLoggedIn = ref(false)
+const showAuthModal = ref(false)
+const authMode = ref('login')
+
+// 統一的浮動提示視窗 (Toast/Alert Modal) 狀態
+const toastModal = reactive({
+  show: false,
+  title: '',
+  message: ''
+})
+
+function showToast(title, message) {
+  toastModal.title = title
+  toastModal.message = message
+  toastModal.show = true
+}
+
+const loginEmail = ref('')
+const loginPassword = ref('')
+const loginCaptchaInput = ref('')
+const loginCaptchaCode = ref('')
+
+function generateCaptcha() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let result = ''
+  for (let i = 0; i < 4; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  loginCaptchaCode.value = result
+}
+
+generateCaptcha()
+
+const registerName = ref('')
+const registerEmail = ref('')
+const registerPassword = ref('')
+const registerPasswordConfirm = ref('')
+
+async function handleLoginSubmit() {
+  if (!loginEmail.value || !loginPassword.value) {
+    showToast('欄位未填寫', '請輸入帳號與密碼！')
+    return
+  }
+  if (loginCaptchaInput.value.toUpperCase() !== loginCaptchaCode.value) {
+    showToast('驗證錯誤', '驗證碼不正確！')
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        login: loginEmail.value,
+        password: loginPassword.value
+      })
+    })
+
+    const data = await response.json()
+
+    if (response.ok) {
+      isLoggedIn.value = true
+      showAuthModal.value = false
+      showToast('登入成功', '歡迎回到尋物雷達！')
+    } else {
+      showToast('登入失敗', data.message || '登入失敗，請檢查帳號或密碼！')
+    }
+  } catch (error) {
+    console.error('連線錯誤:', error)
+    showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  }
+}
+
+async function handleRegisterSubmit() {
+  if (!registerName.value || !registerEmail.value || !registerPassword.value) {
+    showToast('欄位未填寫', '請填寫所有必填欄位！')
+    return
+  }
+  if (registerPassword.value !== registerPasswordConfirm.value) {
+    showToast('密碼不一致', '兩次輸入的密碼不一致，請重新檢查！')
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: registerName.value,
+        email: registerEmail.value,
+        password: registerPassword.value
+      })
+    })
+
+    const data = await response.json()
+
+    if (response.ok) {
+      showToast('註冊成功', '註冊成功！請使用剛註冊的帳號密碼登入。')
+      authMode.value = 'login'
+      loginEmail.value = registerEmail.value
+    } else {
+      let errorMsg = data.message || '註冊失敗！'
+      if (data.errors) {
+        errorMsg = Object.values(data.errors).flat().join('\n')
+      }
+      showToast('註冊失敗', errorMsg)
+    }
+  } catch (error) {
+    console.error('連線錯誤:', error)
+    showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  }
+}
+
+function handlePublishClick() {
+  if (!isLoggedIn.value) {
+    showToast('尚未登入', '刊登物品前請先登入系統。')
+    authMode.value = 'login'
+    showAuthModal.value = true
+  } else {
+    showForm.value = true
+  }
+}
+
+function openAuth(mode) {
+  authMode.value = mode
+  showAuthModal.value = true
+}
+
+function handleLogout() {
+  isLoggedIn.value = false
+  showToast('已登出', '您已成功登出系統。')
+}
+
+function handleImageUpload(event) {
+  const file = event.target.files[0]
+  if (file) {
+    if (!file.type.startsWith('image/')) {
+      showToast('格式錯誤', '只能上傳圖片格式的檔案喔！（例如 JPG、PNG 等）')
+      event.target.value = ''
+      formImage.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      formImage.value = e.target.result
+    }
+    reader.readAsDataURL(file)
+  }
+}
+
+const categories = computed(() => {
+  const counts = {}
+  items.value.forEach(item => {
+    if (item.category) {
+      counts[item.category] = (counts[item.category] || 0) + 1
+    }
+  })
+
+  const sortedCategories = Object.keys(counts).sort((a, b) => {
+    return counts[b] - counts[a]
+  })
+
+  const topCategories = sortedCategories.slice(0, 9)
+  return ['全部', ...topCategories]
+})
+
+// 由資料庫提供資料，初始為空陣列
+const items = ref([])
+
+const now = new Date()
+const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+const formTitle = ref('')
+const formCategory = ref('')
+const formLocation = ref('')
+const formDate = ref(formattedDate)
+const formType = ref('found')
+const formImage = ref('')
+
+const filteredItems = computed(() => {
+  return items.value.filter((item) => {
+    const matchesKeyword =
+      `${item.title} ${item.location}`
+        .toLowerCase()
+        .includes(keyword.value.toLowerCase())
+
+    const matchesCategory =
+      category.value === '全部' ||
+      item.category === category.value
+
+    return matchesKeyword && matchesCategory
+  })
+})
+
+const currentPage = ref(1)
+const itemsPerPage = ref(12)
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredItems.value.length / itemsPerPage.value)
+})
+
+const paginatedItems = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  const end = start + itemsPerPage.value
+  return filteredItems.value.slice(start, end)
+})
+
+// 串接後端 API 的新增函式
+async function submitItem() {
+  let errors = []
+
+  if (!formTitle.value.trim()) {
+    errors.push('請填寫物品名稱！')
+  }
+  if (!formLocation.value.trim()) {
+    errors.push('請填寫地點！')
+  }
+  if (!formCategory.value) {
+    errors.push('請選擇物品分類！')
+  }
+
+  if (errors.length > 0) {
+    showToast('欄位不完整', errors.join('\n'))
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        title: formTitle.value,
+        category: formCategory.value,
+        location: formLocation.value,
+        date: formDate.value,
+        type: formType.value,
+        image: formImage.value.trim()
+      })
+    })
+
+    const data = await response.json()
+
+    if (response.ok) {
+      showToast('刊登成功', '刊登成功！資料已儲存至資料庫。')
+      
+      // 重新跟後端要最新清單，並即時顯示在畫面上
+      await fetchItems()
+
+      // 清空表單並關閉視窗
+      formTitle.value = ''
+      formCategory.value = ''
+      formLocation.value = ''
+      formType.value = 'found'
+      formImage.value = ''
+      showForm.value = false
+    } else {
+      showToast('刊登失敗', data.message || '刊登失敗，請檢查輸入內容！')
+    }
+  } catch (error) {
+    console.error('刊登錯誤：', error)
+    showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  }
+}
+</script>
+
+<template>
+  <div class="min-h-screen bg-slate-50 text-slate-800">
+    <header class="border-b border-slate-200 bg-white">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+        <a href="/" class="text-xl font-black text-indigo-600">◈ 尋物雷達</a>
+        
+        <!-- 獨立的登入、註冊與刊登按鈕 -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <template v-if="!isLoggedIn">
+            <button
+              class="rounded-xl border border-indigo-600 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition"
+              @click="openAuth('login')"
+            >
+              登入
+            </button>
+            <button
+              class="rounded-xl border border-indigo-600 px-3 py-2 text-xs sm:text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition"
+              @click="openAuth('register')"
+            >
+              註冊
+            </button>
+          </template>
+          <template v-else>
+            <span class="text-xs sm:text-sm font-semibold text-slate-600 hidden sm:inline">已登入</span>
+            <button
+              class="rounded-xl bg-slate-200 px-3 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-300 transition"
+              @click="handleLogout"
+            >
+              登出
+            </button>
+          </template>
+
+          <button
+            class="rounded-xl bg-indigo-600 px-4 py-2 text-xs sm:text-sm font-bold text-white hover:bg-indigo-700 transition shadow-sm"
+            @click="handlePublishClick"
+          >
+            + 刊登物品
+          </button>
+        </div>
       </div>
     </header>
 
-    <!-- 主要內容區 -->
-    <main class="main-content">
-      <section class="hero-banner">
-        <h1>尋找失物 ‧ 輕鬆歸還</h1>
-        <p>全校最即時的雲端失物招領平台</p>
+    <main class="mx-auto max-w-6xl px-5 py-10">
+      <section class="rounded-3xl bg-indigo-600 px-6 py-12 text-white sm:px-12">
+        <p class="mb-3 text-sm font-bold tracking-widest text-indigo-200">CAMPUS LOST & FOUND</p>
+        <h1 class="text-3xl font-black leading-tight sm:text-5xl">遺失的物品，<br />讓我們幫你找回。</h1>
+        <p class="mt-4 max-w-lg text-sm leading-7 text-indigo-100">
+          搜尋校園失物，或刊登拾獲物品。將透過 AI 影像比對，推薦可能的失物配對。
+        </p>
+
+        <div class="mt-7 flex max-w-xl flex-col gap-3 sm:flex-row">
+          <input
+            v-model="keyword"
+            type="text"
+            placeholder="搜尋耳機、水壺、圖書館..."
+            class="min-w-0 flex-1 rounded-xl bg-white px-4 py-3 text-slate-800 outline-none focus:ring-4 focus:ring-indigo-300"
+          />
+          <button
+            class="rounded-xl bg-white px-6 py-3 font-bold text-indigo-700 hover:bg-indigo-50"
+            @click="category = '全部'"
+          >
+            搜尋物品
+          </button>
+        </div>
       </section>
 
-      <!-- 雲端失物卡片展示區 -->
-      <section class="items-section">
-        <div class="section-header">
-          <h2>最新失物清單</h2>
-          <button class="btn btn-outline btn-sm" @click="fetchItemsFromRender">🔄 重新整理</button>
+      <section class="mt-10">
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="item in categories"
+            :key="item"
+            class="rounded-full border px-4 py-2 text-sm font-semibold transition"
+            :class="category === item ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'"
+            @click="category = item"
+          >
+            {{ item }}
+          </button>
         </div>
-        
-        <!-- 載入中提示 -->
-        <div v-if="loading" class="loading-state">
-          <p>⏳ 正在連線至 Render 雲端資料庫取得最新失物資訊...</p>
-        </div>
+      </section>
 
-        <!-- 無資料提示 -->
-        <div v-else-if="items.length === 0" class="empty-state">
-          <p>📭 目前資料庫中暫無失物資料，點擊右上角「我要刊登失物」新增第一筆吧！</p>
-        </div>
-
-        <!-- 失物清單 Grid -->
-        <div v-else class="items-grid">
-          <div v-for="item in items" :key="item.id" class="item-card">
-            <div class="card-tag" :class="item.type || 'found'">
-              {{ item.type === 'lost' ? '尋找中' : '已拾獲' }}
-            </div>
-            <h3 class="item-title">{{ item.title }}</h3>
-            <p class="item-info">📍 地點：{{ item.location || '未標示' }}</p>
-            <p class="item-info">📅 日期：{{ item.date || item.created_at?.slice(0, 10) || '無日期' }}</p>
-            <p class="item-desc" v-if="item.description">📝 備註：{{ item.description }}</p>
-            
-            <div class="card-actions">
-              <button class="btn btn-card" @click="checkDetails(item)">檢視詳情</button>
-              <button class="btn btn-danger-outline" @click="handleWithdraw(item.id)">撤回刊登</button>
-            </div>
+      <section class="mt-8">
+        <div class="mb-5 flex items-end justify-between">
+          <div>
+            <h2 class="text-2xl font-black">校園失物列表</h2>
+            <p class="mt-1 text-sm text-slate-500">找找看，有沒有你正在尋找的物品。</p>
           </div>
+          <span class="text-sm text-slate-500">{{ filteredItems.length }} 筆紀錄</span>
         </div>
+
+        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <article
+            v-for="item in paginatedItems"
+            :key="item.id"
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg cursor-pointer"
+            @click="openDetail(item)"
+          >
+            <div class="relative h-52 bg-slate-100">
+              <img v-if="item.image" :src="item.image" :alt="item.title" class="h-full w-full object-cover" />
+              <div v-else class="flex h-full items-center justify-center text-slate-400">尚無物品照片</div>
+              <span
+                class="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold"
+                :class="item.type === 'found' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+              >
+                {{ item.type === 'found' ? '已拾獲' : '正在尋找' }}
+              </span>
+            </div>
+
+            <div class="p-5">
+              <p class="text-xs font-semibold text-indigo-600">{{ item.category }}</p>
+              <h3 class="mt-2 text-lg font-bold">{{ item.title }}</h3>
+              <div class="mt-4 space-y-2 text-sm text-slate-500">
+                <p>📍 {{ item.location }}</p>
+                <p>📅 {{ item.date }}</p>
+              </div>
+              <div class="mt-5 w-full text-center rounded-xl border border-indigo-200 py-2.5 text-sm font-bold text-indigo-700 hover:bg-indigo-50">
+                查看詳細內容
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div v-if="totalPages > 1" class="mt-10 flex justify-center items-center gap-2">
+          <button :disabled="currentPage === 1" @click="currentPage--" class="px-4 py-2 border rounded-xl bg-white">&lt;</button>
+          <button v-for="page in totalPages" :key="page" @click="currentPage = page" :class="currentPage === page ? 'bg-indigo-600 text-white' : 'bg-white border'" class="px-4 py-2 rounded-xl font-bold">
+            {{ page }}
+          </button>
+          <button :disabled="currentPage === totalPages" @click="currentPage++" class="px-4 py-2 border rounded-xl bg-white">&gt;</button>
+        </div>
+
+        <p v-if="filteredItems.length === 0" class="py-16 text-center text-slate-500">
+          找不到符合條件的物品，試試其他關鍵字。
+        </p>
       </section>
     </main>
 
-    <!-- 登入 / 註冊 彈出視窗 (Modal) -->
-    <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal-card">
-        <button class="close-btn" @click="closeModal">✕</button>
-
-        <div class="modal-tabs">
-          <button :class="['tab-btn', { active: currentTab === 'login' }]" @click="currentTab = 'login'">用戶登入</button>
-          <button :class="['tab-btn', { active: currentTab === 'register' }]" @click="currentTab = 'register'">註冊新帳號</button>
+    <!-- 詳細資料與刪除視窗 -->
+    <div
+      v-if="selectedItem"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      @click.self="selectedItem = null"
+    >
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-xs font-semibold text-indigo-600">{{ selectedItem.category }}</span>
+          <button class="text-slate-400 hover:text-slate-600 font-bold" @click="selectedItem = null">✕ 關閉</button>
         </div>
 
-        <!-- 登入表單 -->
-        <form v-if="currentTab === 'login'" @submit.prevent="handleLogin" class="auth-form">
-          <div class="form-group">
-            <label>電子郵件</label>
-            <input type="email" v-model="loginForm.email" placeholder="請輸入 Email" required />
-          </div>
-          <div class="form-group">
-            <label>密碼</label>
-            <input type="password" v-model="loginForm.password" placeholder="請輸入密碼" required />
-          </div>
-          <button type="submit" class="btn btn-primary btn-block" :disabled="submitting">
-            {{ submitting ? '登入中...' : '立即登入' }}
-          </button>
-        </form>
+        <div class="relative h-52 overflow-hidden rounded-xl bg-slate-100 mb-4">
+          <img v-if="selectedItem.image" :src="selectedItem.image" :alt="selectedItem.title" class="h-full w-full object-cover" />
+          <div v-else class="flex h-full items-center justify-center text-slate-400">尚無物品照片</div>
+        </div>
 
-        <!-- 註冊表單 -->
-        <form v-else @submit.prevent="handleRegister" class="auth-form">
-          <div class="form-group">
-            <label>使用者姓名</label>
-            <input type="text" v-model="registerForm.name" placeholder="請輸入姓名或暱稱" required />
-          </div>
-          <div class="form-group">
-            <label>電子郵件</label>
-            <input type="email" v-model="registerForm.email" placeholder="example@mail.com" required />
-          </div>
-          <div class="form-group">
-            <label>設定密碼</label>
-            <input type="password" v-model="registerForm.password" placeholder="至少 6 位字元" required />
-          </div>
-          <button type="submit" class="btn btn-primary btn-block" :disabled="submitting">
-            {{ submitting ? '註冊中...' : '完成註冊' }}
-          </button>
-        </form>
+        <h2 class="text-xl font-black mb-2">{{ selectedItem.title }}</h2>
+        <p class="text-sm text-slate-600 mb-1">📍 地點：{{ selectedItem.location }}</p>
+        <p class="text-sm text-slate-600 mb-6">📅 時間：{{ selectedItem.date }}</p>
+
+        <button
+          type="button"
+          class="w-full rounded-xl border border-rose-200 bg-rose-50 py-3 text-sm font-bold text-rose-600 hover:bg-rose-100 transition"
+          @click="deleteItem(selectedItem.id)"
+        >
+          已找到，確定刪除？
+        </button>
       </div>
     </div>
 
-    <!-- 刊登失物彈出視窗 (Post Modal) -->
-    <div v-if="showPostModal" class="modal-overlay" @click.self="closePostModal">
-      <div class="modal-card">
-        <button class="close-btn" @click="closePostModal">✕</button>
-        <h3 class="modal-title-custom">✨ 刊登失物/拾獲資訊</h3>
+    <!-- 刊登表單視窗 -->
+    <div
+      v-if="showForm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      @click.self="showForm = false"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <h2 class="text-xl font-black">刊登失物 / 拾獲物品</h2>
+        <p class="mt-1 text-sm text-slate-500">填寫詳細資訊，讓失主或拾獲人更容易找到。</p>
 
-        <form @submit.prevent="handlePostItem" class="auth-form">
-          <div class="form-group">
-            <label>物品名稱</label>
-            <input type="text" v-model="postForm.title" placeholder="例如：黑色AirPods充電盒" required />
+        <div class="mt-5 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">類型</label>
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                class="py-2.5 rounded-xl text-sm font-bold border transition"
+                :class="formType === 'found' ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-600'"
+                @click="formType = 'found'"
+              >
+                🟢 我撿到了 (已拾獲)
+              </button>
+              <button
+                type="button"
+                class="py-2.5 rounded-xl text-sm font-bold border transition"
+                :class="formType === 'lost' ? 'border-amber-600 bg-amber-50 text-amber-700' : 'border-slate-200 text-slate-600'"
+                @click="formType = 'lost'"
+              >
+                🟠 我弄丟了 (正在尋找)
+              </button>
+            </div>
           </div>
-          <div class="form-group">
-            <label>物件類型</label>
-            <select v-model="postForm.type" class="form-select">
-              <option value="lost">尋找中 (Lost)</option>
-              <option value="found">已拾獲 (Found)</option>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">物品名稱 *</label>
+            <input
+              v-model="formTitle"
+              type="text"
+              placeholder="例如：黑色筆電包、學生證"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">分類</label>
+            <select
+              v-model="formCategory"
+              required
+              class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            >
+              <option value="" disabled selected>請選擇物品分類</option>
+              <option value="電子產品">電子產品</option>
+              <option value="文具">文具</option>
+              <option value="生活用品">生活用品</option>
+              <option value="其他">其他</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>遺失/拾獲地點</label>
-            <input type="text" v-model="postForm.location" placeholder="例如：圖書館 2 樓" required />
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">地點 *</label>
+            <input
+              v-model="formLocation"
+              type="text"
+              placeholder="例如：圖書館 3 樓、體育館外"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
           </div>
-          <div class="form-group">
-            <label>發生日期</label>
-            <input type="date" v-model="postForm.date" required />
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">日期</label>
+            <input
+              v-model="formDate"
+              type="datetime-local"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
           </div>
-          <div class="form-group">
-            <label>詳細描述 / 備註</label>
-            <textarea v-model="postForm.description" rows="3" placeholder="補充特徵、聯絡方式等..."></textarea>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">上傳物品照片 (選填)</label>
+            <input
+              type="file"
+              accept="image/*"
+              class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border border-slate-200 rounded-xl p-1"
+              @change="handleImageUpload"
+            />
+            <div v-if="formImage" class="mt-3 relative h-36 w-full overflow-hidden rounded-xl bg-slate-100 border border-slate-200">
+              <img :src="formImage" class="h-full w-full object-cover" />
+              <button
+                type="button"
+                class="absolute top-2 right-2 rounded-full bg-slate-900/60 px-2 py-1 text-xs text-white hover:bg-slate-900"
+                @click="formImage = ''"
+              >
+                ✕ 移除照片
+              </button>
+            </div>
           </div>
-          <button type="submit" class="btn btn-primary btn-block" :disabled="submitting">
-            {{ submitting ? '刊登中...' : '確認送出刊登' }}
+        </div>
+
+        <div class="mt-6 flex gap-3">
+          <button 
+            type="button" 
+            class="flex-1 rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700" 
+            @click="submitItem"
+          >
+            確認送出
+          </button>   
+
+          <button
+            type="button"
+            class="flex-1 rounded-xl border border-slate-200 py-3 font-bold text-slate-600 hover:bg-slate-100"
+            @click="showForm = false"
+          >
+            取消
           </button>
-        </form>
+        </div>
       </div>
     </div>
 
-    <!-- 成功/提示 浮動視窗 (Toast Notification Modal) -->
-    <div v-if="toast.show" class="toast-overlay">
-      <div class="toast-card">
-        <div class="toast-icon">{{ toast.icon }}</div>
-        <h3 class="toast-title">{{ toast.title }}</h3>
-        <p class="toast-message">{{ toast.message }}</p>
-        <button class="btn btn-primary toast-btn" @click="closeToast">確定</button>
+    <!-- 獨立登入/註冊彈窗 -->
+    <div
+      v-if="showAuthModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      @click.self="showAuthModal = false"
+    >
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <button class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 font-bold" @click="showAuthModal = false">✕</button>
+
+        <div class="flex border-b border-slate-200 mb-6">
+          <button
+            type="button"
+            class="flex-1 pb-3 text-center font-bold text-lg border-b-2 transition"
+            :class="authMode === 'login' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'"
+            @click="authMode = 'login'"
+          >
+            系統登入 Login
+          </button>
+          <button
+            type="button"
+            class="flex-1 pb-3 text-center font-bold text-lg border-b-2 transition"
+            :class="authMode === 'register' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'"
+            @click="authMode = 'register'"
+          >
+            帳號註冊 Register
+          </button>
+        </div>
+
+        <div v-if="authMode === 'login'" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">帳號 (Name or Email)</label>
+            <input
+              v-model="loginEmail"
+              type="text"
+              placeholder="請輸入使用者名稱 或 Email"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">密碼 (Password)</label>
+            <input
+              v-model="loginPassword"
+              type="password"
+              placeholder="輸入密碼"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">驗證碼 (Captcha)</label>
+            <div class="flex gap-2 items-center">
+              <input
+                v-model="loginCaptchaInput"
+                type="text"
+                placeholder="4碼英數字"
+                class="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+              />
+              <div 
+                class="bg-indigo-100 text-indigo-700 font-mono font-black text-lg px-4 py-2 rounded-xl tracking-widest select-none cursor-pointer hover:bg-indigo-200 transition"
+                title="點擊更換驗證碼"
+                @click="generateCaptcha"
+              >
+                {{ loginCaptchaCode }}
+              </div>
+            </div>
+            <p class="text-xs text-rose-500 mt-1">(驗證碼不分大小寫)</p>
+          </div>
+
+          <button
+            type="button"
+            class="w-full rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 transition mt-2"
+            @click="handleLoginSubmit"
+          >
+            登入 (Login)
+          </button>
+        </div>
+
+        <div v-else class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">暱稱 (Name) *</label>
+            <input
+              v-model="registerName"
+              type="text"
+              placeholder="請輸入姓名"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">帳號 / 電子郵件 (Email) *</label>
+            <input
+              v-model="registerEmail"
+              type="email"
+              placeholder="例如 s10912345@school.edu.tw"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">設定密碼 (Password) *</label>
+            <input
+              v-model="registerPassword"
+              type="password"
+              placeholder="請輸入密碼"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">確認密碼 (Confirm Password) *</label>
+            <input
+              v-model="registerPasswordConfirm"
+              type="password"
+              placeholder="再次輸入密碼"
+              class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-600"
+            />
+          </div>
+
+          <button
+            type="button"
+            class="w-full rounded-xl bg-indigo-600 py-3 font-bold text-white hover:bg-indigo-700 transition mt-2"
+            @click="handleRegisterSubmit"
+          >
+            註冊帳號 (Register)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 統一的浮動提示視窗 (Toast / Alert Modal) -->
+    <div
+      v-if="toastModal.show"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-5 backdrop-blur-xs"
+      @click.self="toastModal.show = false"
+    >
+      <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl text-center">
+        <h3 class="text-lg font-black text-slate-800 mb-2">{{ toastModal.title }}</h3>
+        <p class="text-sm text-slate-600 mb-6 whitespace-pre-line leading-relaxed">{{ toastModal.message }}</p>
+        <button
+          type="button"
+          class="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition"
+          @click="toastModal.show = false"
+        >
+          確定
+        </button>
       </div>
     </div>
   </div>
 </template>
-
-<script setup>
-import { ref, reactive, onMounted } from 'vue'
-
-// 🔗 Render 雲端後端正式 API 網址
-const API_BASE_URL = 'https://lost-and-found-workspace.onrender.com/api'
-
-// 當前狀態
-const currentUser = ref(null)
-const items = ref([])
-const loading = ref(true)
-const submitting = ref(false)
-
-// 視窗控制
-const showModal = ref(false)
-const currentTab = ref('login')
-const showPostModal = ref(false)
-
-// 表單綁定資料
-const loginForm = reactive({ email: '', password: '' })
-const registerForm = reactive({ name: '', email: '', password: '' })
-const postForm = reactive({
-  title: '',
-  type: 'lost',
-  location: '',
-  date: new Date().toISOString().slice(0, 10),
-  description: ''
-})
-
-// 浮動提示視窗 (Toast) 狀態
-const toast = reactive({
-  show: false,
-  title: '',
-  message: '',
-  icon: '✨'
-})
-
-onMounted(() => {
-  fetchItemsFromRender()
-  checkLocalStorageUser()
-})
-
-// 1. 取得失物清單
-const fetchItemsFromRender = async () => {
-  loading.value = true
-  try {
-    const response = await fetch(`${API_BASE_URL}/items`)
-    if (!response.ok) throw new Error('無法取得雲端資料庫資料')
-    
-    const data = await response.json()
-    items.value = Array.isArray(data) ? data : (data.data || [])
-  } catch (error) {
-    console.error('Fetch error:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-const checkLocalStorageUser = () => {
-  const savedUser = localStorage.getItem('user_info')
-  if (savedUser) {
-    try {
-      currentUser.value = JSON.parse(savedUser)
-    } catch (e) {
-      localStorage.removeItem('user_info')
-    }
-  }
-}
-
-// 彈窗控制
-const openAuthModal = (mode) => {
-  currentTab.value = mode
-  showModal.value = true
-}
-const closeModal = () => { showModal.value = false }
-
-const openPostModal = () => { showPostModal.value = true }
-const closePostModal = () => { showPostModal.value = false }
-
-const showToastNotification = (title, message, icon = '✨') => {
-  toast.title = title
-  toast.message = message
-  toast.icon = icon
-  toast.show = true
-}
-const closeToast = () => { toast.show = false }
-
-// 2. 登入
-const handleLogin = async () => {
-  submitting.value = true
-  try {
-    const response = await fetch(`${API_BASE_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(loginForm)
-    })
-    const data = await response.json()
-    if (response.ok) {
-      currentUser.value = data.user || { name: loginForm.email.split('@')[0] }
-      localStorage.setItem('user_info', JSON.stringify(currentUser.value))
-      closeModal()
-      showToastNotification('登入成功！', `歡迎回到失物招領系統，${currentUser.value.name}！`, '🎉')
-      loginForm.email = ''
-      loginForm.password = ''
-    } else {
-      showToastNotification('登入失敗', data.message || '帳號或密碼不正確！', '❌')
-    }
-  } catch (error) {
-    currentUser.value = { name: loginForm.email.split('@')[0] }
-    localStorage.setItem('user_info', JSON.stringify(currentUser.value))
-    closeModal()
-    showToastNotification('登入成功！', `歡迎回到失物招領系統，${currentUser.value.name}！`, '🎉')
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 3. 註冊
-const handleRegister = async () => {
-  submitting.value = true
-  try {
-    const response = await fetch(`${API_BASE_URL}/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(registerForm)
-    })
-    const data = await response.json()
-    if (response.ok) {
-      currentUser.value = data.user || { name: registerForm.name }
-      localStorage.setItem('user_info', JSON.stringify(currentUser.value))
-      closeModal()
-      showToastNotification('註冊成功！', `恭喜 ${registerForm.name} 成功建立帳號！`, '🚀')
-      registerForm.name = ''
-      registerForm.email = ''
-      registerForm.password = ''
-    } else {
-      showToastNotification('註冊失敗', data.message || '格式有誤，請重試！', '❌')
-    }
-  } catch (error) {
-    currentUser.value = { name: registerForm.name }
-    localStorage.setItem('user_info', JSON.stringify(currentUser.value))
-    closeModal()
-    showToastNotification('註冊成功！', `恭喜 ${registerForm.name} 成功建立帳號！`, '🚀')
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 4. 刊登失物
-const handlePostItem = async () => {
-  submitting.value = true
-  try {
-    const response = await fetch(`${API_BASE_URL}/items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(postForm)
-    })
-    if (response.ok) {
-      closePostModal()
-      showToastNotification('刊登成功！', `您的失物【${postForm.title}】已成功發布至雲端資料庫！`, '✨')
-      // 清空並重新撈取
-      postForm.title = ''
-      postForm.location = ''
-      postForm.description = ''
-      fetchItemsFromRender()
-    } else {
-      throw new Error('刊登失敗')
-    }
-  } catch (error) {
-    // 模擬前端直接新增並顯示成功視窗
-    items.value.unshift({ id: Date.now(), ...postForm })
-    closePostModal()
-    showToastNotification('刊登成功！', `您的失物【${postForm.title}】已成功發布！`, '✨')
-    postForm.title = ''
-    postForm.location = ''
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 5. 撤回/刪除刊登
-const handleWithdraw = async (id) => {
-  if (!confirm('確定要撤回此筆失物刊登嗎？')) return
-  try {
-    const response = await fetch(`${API_BASE_URL}/items/${id}`, {
-      method: 'DELETE'
-    })
-    if (response.ok || response.status === 200 || response.status === 204) {
-      items.value = items.value.filter(item => item.id !== id)
-      showToastNotification('撤回成功', '該筆失物資訊已從雲端移除。', '🗑️')
-    } else {
-      throw new Error('刪除失敗')
-    }
-  } catch (error) {
-    // 本地移除並提示
-    items.value = items.value.filter(item => item.id !== id)
-    showToastNotification('撤回成功', '該筆失物資訊已從畫面移除。', '🗑️')
-  }
-}
-
-// 登出
-const handleLogout = () => {
-  currentUser.value = null
-  localStorage.removeItem('user_info')
-  localStorage.removeItem('auth_token')
-  showToastNotification('已順利登出', '感謝使用失物招領系統！', '👋')
-}
-
-const checkDetails = (item) => {
-  showToastNotification('失物詳情', `【${item.title}】\n📍 地點：${item.location || '未標示'}\n📅 日期：${item.date || '無'}\n📝 備註：${item.description || '無'}`, '🔍')
-}
-</script>
-
-<style>
-/* 全局黑橘 (Dark Cyberpunk Orange) 設計系統 */
-:root {
-  --bg-dark: #121214;
-  --bg-card: #1c1c22;
-  --bg-input: #262630;
-  --border-color: #2e2e3a;
-  
-  --orange-primary: #ff7a00;
-  --orange-hover: #e06c00;
-  --orange-light: #ffa040;
-  --orange-glow: rgba(255, 122, 0, 0.35);
-
-  --text-bright: #ffffff;
-  --text-main: #e2e2e8;
-  --text-muted: #8e8e9f;
-}
-
-body {
-  margin: 0;
-  background-color: var(--bg-dark);
-  color: var(--text-main);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-}
-
-/* 頂部 Navbar */
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 2rem;
-  background-color: #16161a;
-  border-bottom: 2px solid var(--orange-primary);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.logo .title {
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: var(--orange-primary);
-  letter-spacing: 1px;
-}
-
-.nav-auth {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.welcome-msg {
-  color: var(--text-muted);
-}
-
-.user-name {
-  color: var(--orange-light);
-}
-
-/* 按鈕風格 */
-.btn {
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  border: none;
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 0.85rem;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, var(--orange-primary), #ff5500);
-  color: #fff;
-  box-shadow: 0 4px 12px var(--orange-glow);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--orange-hover), #d94800);
-  box-shadow: 0 6px 18px var(--orange-glow);
-  transform: translateY(-1px);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-outline {
-  background: transparent;
-  color: var(--orange-primary);
-  border: 1px solid var(--orange-primary);
-}
-
-.btn-outline:hover {
-  background: rgba(255, 122, 0, 0.1);
-  color: var(--orange-light);
-}
-
-.btn-danger-outline {
-  background: transparent;
-  color: #ff6b6b;
-  border: 1px solid #ff6b6b;
-  width: 48%;
-  padding: 8px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.btn-danger-outline:hover {
-  background: rgba(255, 107, 107, 0.15);
-}
-
-.btn-logout {
-  background: #2a2a35;
-  color: var(--text-muted);
-}
-
-.btn-logout:hover {
-  background: #3a3a48;
-  color: #fff;
-}
-
-.btn-block {
-  width: 100%;
-  padding: 12px;
-  margin-top: 10px;
-}
-
-.card-actions {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 12px;
-}
-
-.btn-card {
-  width: 48%;
-  background-color: #282834;
-  color: var(--orange-light);
-  border: 1px solid var(--border-color);
-  padding: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.btn-card:hover {
-  border-color: var(--orange-primary);
-  background-color: var(--orange-primary);
-  color: #fff;
-}
-
-/* 主區域與卡片列表 */
-.main-content {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 40px 20px;
-}
-
-.hero-banner {
-  text-align: center;
-  margin-bottom: 50px;
-}
-
-.hero-banner h1 {
-  font-size: 2.5rem;
-  color: var(--text-bright);
-  margin-bottom: 10px;
-}
-
-.hero-banner p {
-  color: var(--text-muted);
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.items-section h2 {
-  color: var(--orange-light);
-  border-left: 4px solid var(--orange-primary);
-  padding-left: 12px;
-  margin: 0;
-}
-
-.loading-state, .empty-state {
-  text-align: center;
-  padding: 40px;
-  color: var(--text-muted);
-  background-color: var(--bg-card);
-  border-radius: 12px;
-  border: 1px dashed var(--border-color);
-}
-
-.items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-.item-card {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 20px;
-  position: relative;
-  transition: all 0.3s ease;
-}
-
-.item-card:hover {
-  border-color: var(--orange-primary);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px var(--orange-glow);
-}
-
-.card-tag {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: bold;
-}
-
-.card-tag.lost {
-  background: rgba(255, 60, 60, 0.2);
-  color: #ff6b6b;
-  border: 1px solid #ff6b6b;
-}
-
-.card-tag.found {
-  background: rgba(255, 122, 0, 0.2);
-  color: var(--orange-light);
-  border: 1px solid var(--orange-primary);
-}
-
-.item-title {
-  margin: 0 0 12px 0;
-  font-size: 1.2rem;
-  color: var(--text-bright);
-}
-
-.item-info, .item-desc {
-  margin: 6px 0;
-  font-size: 0.9rem;
-  color: var(--text-muted);
-}
-
-/* 彈出視窗 (Modal) 樣式 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(5px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.modal-card {
-  background-color: var(--bg-card);
-  border: 1px solid var(--orange-primary);
-  border-radius: 16px;
-  width: 90%;
-  max-width: 400px;
-  padding: 30px;
-  position: relative;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 20px var(--orange-glow);
-  animation: modalFadeIn 0.3s ease;
-}
-
-.close-btn {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.2rem;
-  cursor: pointer;
-}
-
-.close-btn:hover {
-  color: var(--orange-primary);
-}
-
-.modal-title-custom {
-  color: var(--orange-light);
-  margin-top: 0;
-  margin-bottom: 20px;
-}
-
-/* 彈窗 Tab */
-.modal-tabs {
-  display: flex;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.tab-btn {
-  flex: 1;
-  padding: 12px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.tab-btn.active {
-  color: var(--orange-primary);
-  border-bottom: 2px solid var(--orange-primary);
-}
-
-/* 表單元件 */
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.form-group input, .form-group select, .form-group textarea {
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 12px;
-  color: var(--text-bright);
-  font-size: 0.95rem;
-  font-family: inherit;
-}
-
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-  outline: none;
-  border-color: var(--orange-primary);
-  box-shadow: 0 0 8px var(--orange-glow);
-}
-
-/* 成功提示 Modal (Toast Overlay) */
-.toast-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-}
-
-.toast-card {
-  background-color: #1a1a22;
-  border: 2px solid var(--orange-primary);
-  border-radius: 16px;
-  padding: 30px;
-  text-align: center;
-  width: 320px;
-  box-shadow: 0 0 30px var(--orange-glow);
-  animation: toastPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.toast-icon {
-  font-size: 2.5rem;
-  margin-bottom: 10px;
-}
-
-.toast-title {
-  color: var(--orange-light);
-  margin: 0 0 8px 0;
-  font-size: 1.3rem;
-}
-
-.toast-message {
-  color: var(--text-main);
-  font-size: 0.95rem;
-  margin-bottom: 20px;
-  white-space: pre-line;
-}
-
-.toast-btn {
-  width: 100%;
-}
-
-/* 動畫效果 */
-@keyframes modalFadeIn {
-  from { opacity: 0; transform: translateY(-20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes toastPop {
-  from { opacity: 0; transform: scale(0.8); }
-  to { opacity: 1; transform: scale(1); }
-}
-</style>
