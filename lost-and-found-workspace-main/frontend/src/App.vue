@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref, onMounted, reactive } from 'vue'
 
-// 雲端後端 API 基底網址
-const API_BASE_URL = 'https://lost-and-found-workspace.onrender.com/api'
+// 將 API 基礎網址指定為本機 Laravel
+const API_BASE_URL = 'http://127.0.0.1:8000/api'
 
 // 載入後端資料庫的物品清單
 async function fetchItems() {
@@ -193,7 +193,9 @@ async function handleAiMatch() {
     isAiSearching.value = true
     showToast('AI 分析中', '正在透過 Ollama AI 進行智慧比對，請稍候...')
     
-    const response = await fetch(`${API_BASE_URL}/api/ai-match`, {
+    console.log('完整 API 網址：', `${API_BASE_URL}/ai-match`);
+    
+    const response = await fetch(`${API_BASE_URL}/ai-match`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -443,7 +445,7 @@ async function submitItem() {
 
       <!-- AI 智慧尋物助手區塊 -->
       <section class="mt-6 rounded-3xl bg-[#121212] px-6 py-6 sm:px-8 sm:py-8">
-        <h2 class="text-base font-black text-[#ff9000] sm:text-lg mb-1">🤖 AI 智慧尋物助手</h2>
+        <h2 class="text-base font-black text-[#ff9000] sm:text-lg mb-1"> AI 智慧尋物助手</h2>
         <p class="text-xs text-[#888888] sm:text-sm mb-4">輸入您遺失物品的特徵描述，讓 AI 自動比對最有可能的物品！</p>
         
         <div class="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
@@ -466,7 +468,7 @@ async function submitItem() {
 
         <!-- AI 推薦比對結果區塊 -->
         <div v-if="aiMatches.length > 0" class="mt-5 space-y-3">
-          <p class="text-xs font-bold text-[#ff9000]">✨ AI 推薦的可能匹配項目：</p>
+          <p class="text-xs font-bold text-[#ff9000]"> AI 推薦的可能匹配項目：</p>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div 
               v-for="item in aiMatches" 
@@ -474,12 +476,21 @@ async function submitItem() {
               class="p-4 rounded-xl bg-[#000000] flex justify-between items-center cursor-pointer hover:bg-[#1a1a1a] transition"
               @click="openDetail(item)"
             >
-              <div>
-                <span class="text-xs font-bold text-[#ff9000] block">[{{ item.category }}]</span>
-                <span class="text-sm font-bold text-[#ffffff] block mt-0.5">{{ item.title }}</span>
-                <span class="text-xs text-[#888888] block mt-1">📍 {{ item.location }}</span>
+              <div class="flex items-center gap-1.5 text-gray-300 text-sm">
+                <!-- 實心橘色地圖釘 SVG -->
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  viewBox="0 0 24 24" 
+                  fill="#ff9000" 
+                  class="w-4 h-4 inline-block flex-shrink-0"
+                >
+                  <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                </svg>
+  
+                <!-- 地點名稱 -->
+                <span>{{ item.location }}</span>
               </div>
-              <span class="text-xs font-bold text-[#ff9000] shrink-0">查看詳情 →</span>
+              <span class="text-xs font-bold text-white shrink-0">查看詳情 →</span>
             </div>
           </div>
         </div>
@@ -529,33 +540,45 @@ async function submitItem() {
                 </span>
               </div>
 
-              <div class="p-4 sm:p-5">
-                <p class="text-xs font-bold text-[#ff9000]">{{ item.category }}</p>
-                <h3 class="mt-1.5 text-base font-bold text-[#ffffff] sm:text-lg sm:mt-2">{{ item.title }}</h3>
-
-                <div class="mt-3 space-y-1.5 text-xs text-[#ffffff] sm:mt-4 sm:space-y-2 sm:text-sm">
-                  <!-- 地點：橘色地圖釘 SVG 圖標 -->
-                  <p class="flex items-center gap-2">
-                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              <!-- 卡片內文區塊 -->
+              <div class="p-4 sm:p-5 space-y-2">
+                <div class="text-xs font-bold text-[#ff9000]">[{{ item.category }}]</div>
+                <h3 class="text-base font-bold text-white truncate sm:text-lg">{{ item.title }}</h3>
+                
+                <div class="space-y-1.5 text-sm text-gray-300 pt-1">
+                  <!-- 第一行：地點（配上實心橘色地圖釘 SVG） -->
+                  <div class="flex items-center gap-1.5">
+                    <svg 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      viewBox="0 0 24 24" 
+                      fill="#ff9000" 
+                      class="w-4 h-4 flex-shrink-0"
+                      style="width: 16px; height: 16px; min-width: 16px;"
+                    >
+                      <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
                     </svg>
-                    {{ item.location }}
-                  </p>
+                    <span>{{ item.location }}</span>
+                  </div>
 
-                  <!-- 時間：橘色行事曆 SVG 圖標 -->
-                  <p class="flex items-center gap-2">
-                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                  <!-- 第二行：時間（日曆/時間專用 ICON，自動過濾 T 與 Z） -->
+                  <div class="flex items-center gap-1.5">
+                    <svg 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      viewBox="0 0 24 24" 
+                      fill="#ff9000" 
+                      class="w-4 h-4 flex-shrink-0"
+                      style="width: 16px; height: 16px; min-width: 16px;"
+                    >
+                      <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75A3.75 3.75 0 0122.5 8.25v10.5A3.75 3.75 0 0118.75 22.5H5.25A3.75 3.75 0 011.5 18.75V8.25A3.75 3.75 0 015.25 4.5h.75V3a.75.75 0 01.75-.75zm14.25 7.5H3v9a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18.75v-9z" clip-rule="evenodd" />
                     </svg>
-                    {{ item.date }}
-                  </p>
+                    <span>{{ item.created_at ? item.created_at.replace('T', ' ').substring(0, 19) : '' }}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div class="p-4 pt-0 sm:p-5 sm:pt-0">
-              <div class="w-full text-center rounded-xl bg-[#1e1e1e] py-2 text-xs font-bold text-[#ff9000] hover:bg-[#ff9000] hover:text-[#000000] transition sm:py-2.5 sm:text-sm">
+              <div class="w-full text-center rounded-xl bg-[#1e1e1e] py-2 text-xs font-bold text-white hover:bg-[#ff9000] hover:text-[#000000] transition sm:py-2.5 sm:text-sm">
                 查看詳細內容
               </div>
             </div>
@@ -596,19 +619,30 @@ async function submitItem() {
 
         <h2 class="text-lg font-black text-[#ffffff] mb-2 sm:text-xl">{{ selectedItem.title }}</h2>
         
-        <!-- 地點行 -->
+        <!-- 地點行（實心橘色地圖釘 SVG） -->
         <p class="text-xs text-[#ffffff] mb-1 sm:text-sm flex items-center gap-2">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24" 
+            fill="#ff9000" 
+            class="w-4 h-4 flex-shrink-0"
+            style="width: 16px; height: 16px; min-width: 16px;"
+          >
+            <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
           </svg>
           地點：{{ selectedItem.location }}
         </p>
 
-        <!-- 時間行 --> 
+        <!-- 時間行（日曆 SVG） --> 
         <p class="text-xs text-[#ffffff] mb-6 sm:text-sm flex items-center gap-2">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            viewBox="0 0 24 24" 
+            fill="#ff9000" 
+            class="w-4 h-4 flex-shrink-0"
+            style="width: 16px; height: 16px; min-width: 16px;"
+          >
+            <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75A3.75 3.75 0 0122.5 8.25v10.5A3.75 3.75 0 0118.75 22.5H5.25A3.75 3.75 0 011.5 18.75V8.25A3.75 3.75 0 015.25 4.5h.75V3a.75.75 0 01.75-.75zm14.25 7.5H3v9a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18.75v-9z" clip-rule="evenodd" />
           </svg>
           時間：{{ selectedItem.date }}
         </p>
