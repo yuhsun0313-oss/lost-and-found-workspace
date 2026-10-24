@@ -61,7 +61,12 @@ const currentUser = ref('') // 儲存目前登入的使用者名稱
 const showAuthModal = ref(false)
 const authMode = ref('login')
 
-// 統一的浮動提示視窗 (Toast/Alert Modal) 狀態
+// AI 智慧搜尋相關變數
+const aiQuery = ref('')
+const aiMatches = ref([])
+const isAiSearching = ref(false)
+
+// 統一的浮動提示視窗 (Toast Modal) 狀態
 const toastModal = reactive({
   show: false,
   title: '',
@@ -122,7 +127,6 @@ async function handleLoginSubmit() {
 
     if (response.ok) {
       isLoggedIn.value = true
-      // 優先使用後端回傳的使用者姓名，否則使用輸入的帳號名稱
       currentUser.value = (data.user && data.user.name) ? data.user.name : loginEmail.value
       showAuthModal.value = false
       showToast('登入成功', `歡迎回到尋物雷達，${currentUser.value}！`)
@@ -175,6 +179,46 @@ async function handleRegisterSubmit() {
   } catch (error) {
     console.error('連線錯誤:', error)
     showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  }
+}
+
+// 呼叫後端 AI 比對 API
+async function handleAiMatch() {
+  if (!aiQuery.value.trim()) {
+    showToast('請輸入描述', '請先輸入您遺失物品的特徵描述！')
+    return
+  }
+
+  try {
+    isAiSearching.value = true
+    showToast('AI 分析中', '正在透過 Ollama AI 進行智慧比對，請稍候...')
+    
+    const response = await fetch(`${API_BASE_URL}/ai-match`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ userDescription: aiQuery.value })
+    })
+
+    const data = await response.json()
+
+    if (data.success) {
+      aiMatches.value = data.matches
+      if (data.matches.length === 0) {
+        showToast('比對完成', '沒有找到高度相似的失物，請嘗試調整描述關鍵字！')
+      } else {
+        showToast('比對完成', `AI 為您推薦了 ${data.matches.length} 筆可能的失物！`)
+      }
+    } else {
+      showToast('比對失敗', data.message || 'AI 分析過程發生錯誤。')
+    }
+  } catch (error) {
+    console.error('AI 請求失敗：', error)
+    showToast('連線錯誤', '無法連線至 AI 比對服務，請確認後端與 Ollama 是否正在運行！')
+  } finally {
+    isAiSearching.value = false
   }
 }
 
@@ -233,7 +277,6 @@ const categories = computed(() => {
   return ['全部', ...topCategories]
 })
 
-// 由資料庫提供資料，初始為空陣列
 const items = ref([])
 
 const now = new Date()
@@ -274,7 +317,6 @@ const paginatedItems = computed(() => {
   return filteredItems.value.slice(start, end)
 })
 
-// 串接後端 API 的新增函式
 async function submitItem() {
   let errors = []
 
@@ -314,11 +356,8 @@ async function submitItem() {
 
     if (response.ok) {
       showToast('刊登成功', '刊登成功！資料已儲存至資料庫。')
-      
-      // 重新跟後端要最新清單，並即時顯示在畫面上
       await fetchItems()
 
-      // 清空表單並關閉視窗
       formTitle.value = ''
       formCategory.value = ''
       formLocation.value = ''
@@ -346,22 +385,16 @@ async function submitItem() {
         
         <!-- 獨立按鈕區塊 -->
         <div class="flex items-center gap-2 sm:gap-3">
+          <!-- 登入 / 註冊合併按鈕：灰底、暗白字，滑鼠移上去變亮白字 -->
           <template v-if="!isLoggedIn">
             <button
-              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#ff9000] hover:bg-[#ff9000] hover:text-[#000000] transition sm:px-4 sm:py-2 sm:text-sm"
+              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#cccccc] hover:bg-[#222222] hover:text-[#ffffff] transition sm:px-4 sm:py-2 sm:text-sm"
               @click="openAuth('login')"
             >
-              登入
-            </button>
-            <button
-              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#ff9000] hover:bg-[#ff9000] hover:text-[#000000] transition sm:px-4 sm:py-2 sm:text-sm"
-              @click="openAuth('register')"
-            >
-              註冊
+              登入 / 註冊
             </button>
           </template>
           <template v-else>
-            <!-- 動態顯示使用者名稱 -->
             <span class="text-xs font-bold text-[#ff9000] sm:text-sm max-w-[100px] sm:max-w-[150px] truncate">
               👤 {{ currentUser }}
             </span>
@@ -389,7 +422,7 @@ async function submitItem() {
         <p class="mb-2 text-xs font-bold tracking-widest text-[#ff9000] sm:mb-3 sm:text-sm">CAMPUS LOST & FOUND</p>
         <h1 class="text-2xl font-black leading-tight sm:text-5xl text-[#ffffff]">遺失的物品，<br /><span class="text-[#ff9000]">讓我們幫你找回。</span></h1>
         <p class="mt-3 max-w-lg text-xs leading-6 text-[#888888] sm:mt-4 sm:text-sm sm:leading-7">
-          搜尋校園失物，或刊登拾獲物品。將透過 AI 影像比對，推薦可能的失物配對。
+          搜尋校園失物，或刊登拾獲物品。透過 AI 智慧比對，推薦可能的失物配對。
         </p>
 
         <div class="mt-6 flex max-w-xl flex-col gap-2.5 sm:mt-7 sm:flex-row sm:gap-3">
@@ -405,6 +438,50 @@ async function submitItem() {
           >
             搜尋物品
           </button>
+        </div>
+      </section>
+
+      <!-- AI 智慧尋物助手區塊 -->
+      <section class="mt-6 rounded-3xl bg-[#121212] px-6 py-6 sm:px-8 sm:py-8">
+        <h2 class="text-base font-black text-[#ff9000] sm:text-lg mb-1">🤖 AI 智慧尋物助手</h2>
+        <p class="text-xs text-[#888888] sm:text-sm mb-4">輸入您遺失物品的特徵描述，讓 AI 自動比對最有可能的物品！</p>
+        
+        <div class="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
+          <input
+            v-model="aiQuery"
+            type="text"
+            placeholder="例如：黑色皮革短夾，裡面有學生證..."
+            class="min-w-0 flex-1 rounded-xl bg-[#000000] px-4 py-2.5 text-sm text-[#ffffff] outline-none sm:py-3 placeholder-[#555555]"
+            @keyup.enter="handleAiMatch"
+          />
+          <button
+            type="button"
+            :disabled="isAiSearching"
+            class="rounded-xl bg-[#ff9000] px-6 py-2.5 text-sm font-bold text-[#000000] hover:bg-[#e07f00] transition sm:py-3 disabled:opacity-50"
+            @click="handleAiMatch"
+          >
+            {{ isAiSearching ? 'AI 比對中...' : 'AI 開始比對' }}
+          </button>
+        </div>
+
+        <!-- AI 推薦比對結果區塊 -->
+        <div v-if="aiMatches.length > 0" class="mt-5 space-y-3">
+          <p class="text-xs font-bold text-[#ff9000]">✨ AI 推薦的可能匹配項目：</p>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div 
+              v-for="item in aiMatches" 
+              :key="item.id" 
+              class="p-4 rounded-xl bg-[#000000] flex justify-between items-center cursor-pointer hover:bg-[#1a1a1a] transition"
+              @click="openDetail(item)"
+            >
+              <div>
+                <span class="text-xs font-bold text-[#ff9000] block">[{{ item.category }}]</span>
+                <span class="text-sm font-bold text-[#ffffff] block mt-0.5">{{ item.title }}</span>
+                <span class="text-xs text-[#888888] block mt-1">📍 {{ item.location }}</span>
+              </div>
+              <span class="text-xs font-bold text-[#ff9000] shrink-0">查看詳情 →</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -457,7 +534,7 @@ async function submitItem() {
                 <h3 class="mt-1.5 text-base font-bold text-[#ffffff] sm:text-lg sm:mt-2">{{ item.title }}</h3>
 
                 <div class="mt-3 space-y-1.5 text-xs text-[#ffffff] sm:mt-4 sm:space-y-2 sm:text-sm">
-                  <!-- 🌟 地點：改為帶有橘色地圖釘 SVG 圖標 -->
+                  <!-- 地點：橘色地圖釘 SVG 圖標 -->
                   <p class="flex items-center gap-2">
                     <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
@@ -466,7 +543,7 @@ async function submitItem() {
                     {{ item.location }}
                   </p>
 
-                  <!-- 🌟 時間：改為帶有橘色行事曆 SVG 圖標 -->
+                  <!-- 時間：橘色行事曆 SVG 圖標 -->
                   <p class="flex items-center gap-2">
                     <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
@@ -518,6 +595,7 @@ async function submitItem() {
         </div>
 
         <h2 class="text-lg font-black text-[#ffffff] mb-2 sm:text-xl">{{ selectedItem.title }}</h2>
+        
         <!-- 地點行 -->
         <p class="text-xs text-[#ffffff] mb-1 sm:text-sm flex items-center gap-2">
           <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
@@ -527,7 +605,7 @@ async function submitItem() {
           地點：{{ selectedItem.location }}
         </p>
 
-          <!-- 時間行 --> 
+        <!-- 時間行 --> 
         <p class="text-xs text-[#ffffff] mb-6 sm:text-sm flex items-center gap-2">
           <svg class="w-4 h-4 shrink-0" fill="none" stroke="#ff9000" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
@@ -535,7 +613,7 @@ async function submitItem() {
           時間：{{ selectedItem.date }}
         </p>
 
-        <!-- 點擊直接刪除 -->
+        <!-- 點擊直接刪除（不需二次確認） -->
         <button
           type="button"
           class="w-full rounded-xl bg-[#3f0f15] py-2.5 text-xs font-bold text-[#f87171] hover:bg-[#5f131d] transition sm:py-3 sm:text-sm"
@@ -562,16 +640,16 @@ async function submitItem() {
             <div class="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm hover:bg-[#ff9000] hover:text-[#000000]"
-                :class="formType === 'lost' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#000000] text-[#ffffff]'"
+                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
+                :class="formType === 'lost' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#222222] text-[#ffffff] hover:bg-[#222222] hover:text-[#ffffff]'"
                 @click="formType = 'lost'"
               >
                 我弄丟了 (正在尋找)
               </button>
               <button
                 type="button"
-                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm hover:bg-[#ff9000] hover:text-[#000000]"
-                :class="formType === 'found' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#000000] text-[#ffffff]'"
+                class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
+                :class="formType === 'found' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#222222] text-[#ffffff] hover:bg-[#222222] hover:text-[#ffffff]'"
                 @click="formType = 'found'"
               >
                 我撿到了 (已拾獲)
