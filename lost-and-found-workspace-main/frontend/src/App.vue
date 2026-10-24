@@ -193,7 +193,7 @@ async function handleAiMatch() {
     isAiSearching.value = true
     showToast('AI 分析中', '正在透過 Ollama AI 進行智慧比對，請稍候...')
     
-    const response = await fetch(`${API_BASE_URL}/ai-match`, {
+    const response = await fetch(`${API_BASE_URL}/api/ai-match`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
