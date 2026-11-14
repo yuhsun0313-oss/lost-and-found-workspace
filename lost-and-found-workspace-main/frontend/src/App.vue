@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, reactive } from 'vue'
 
 // 將 API 基礎網址指定為本機 Laravel
-const API_BASE_URL = 'http://127.0.0.1:8000/api'
+const API_BASE_URL = 'https://lost-and-found-workspace.onrender.com/api';
 
 // 載入後端資料庫的物品清單
 async function fetchItems() {
