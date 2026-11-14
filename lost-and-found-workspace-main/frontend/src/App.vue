@@ -105,8 +105,9 @@ async function handleLoginSubmit() {
     showToast('欄位未填寫', '請輸入帳號與密碼！')
     return
   }
-  if (loginCaptchaInput.value.toUpperCase() !== loginCaptchaCode.value) {
+  if (!loginCaptchaInput.value || loginCaptchaInput.value.toUpperCase() !== loginCaptchaCode.value) {
     showToast('驗證錯誤', '驗證碼不正確！')
+    generateCaptcha() // 錯誤時自動更新驗證碼
     return
   }
 
@@ -132,6 +133,7 @@ async function handleLoginSubmit() {
       showToast('登入成功', `歡迎回到尋物雷達，${currentUser.value}！`)
     } else {
       showToast('登入失敗', data.message || '登入失敗，請檢查帳號或密碼！')
+      generateCaptcha()
     }
   } catch (error) {
     console.error('連線錯誤:', error)
@@ -169,6 +171,7 @@ async function handleRegisterSubmit() {
       showToast('註冊成功', '註冊成功！請使用剛註冊的帳號密碼登入。')
       authMode.value = 'login'
       loginEmail.value = registerEmail.value
+      generateCaptcha()
     } else {
       let errorMsg = data.message || '註冊失敗！'
       if (data.errors) {
@@ -192,8 +195,6 @@ async function handleAiMatch() {
   try {
     isAiSearching.value = true
     showToast('AI 分析中', '正在透過 Ollama AI 進行智慧比對，請稍候...')
-    
-    console.log('完整 API 網址：', `${API_BASE_URL}/ai-match`);
     
     const response = await fetch(`${API_BASE_URL}/ai-match`, {
       method: 'POST',
@@ -387,7 +388,6 @@ async function submitItem() {
         
         <!-- 獨立按鈕區塊 -->
         <div class="flex items-center gap-2 sm:gap-3">
-          <!-- 登入 / 註冊合併按鈕：灰底、暗白字，滑鼠移上去變亮白字 -->
           <template v-if="!isLoggedIn">
             <button
               class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#cccccc] hover:bg-[#222222] hover:text-[#ffffff] transition sm:px-4 sm:py-2 sm:text-sm"
@@ -445,7 +445,7 @@ async function submitItem() {
 
       <!-- AI 智慧尋物助手區塊 -->
       <section class="mt-6 rounded-3xl bg-[#121212] px-6 py-6 sm:px-8 sm:py-8">
-        <h2 class="text-base font-black text-[#ff9000] sm:text-lg mb-1"> AI 智慧尋物助手</h2>
+        <h2 class="text-base font-black text-[#ff9000] sm:text-lg mb-1">🤖 AI 智慧尋物助手</h2>
         <p class="text-xs text-[#888888] sm:text-sm mb-4">輸入您遺失物品的特徵描述，讓 AI 自動比對最有可能的物品！</p>
         
         <div class="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
@@ -468,7 +468,7 @@ async function submitItem() {
 
         <!-- AI 推薦比對結果區塊 -->
         <div v-if="aiMatches.length > 0" class="mt-5 space-y-3">
-          <p class="text-xs font-bold text-[#ff9000]"> AI 推薦的可能匹配項目：</p>
+          <p class="text-xs font-bold text-[#ff9000]">✨ AI 推薦的可能匹配項目：</p>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div 
               v-for="item in aiMatches" 
@@ -477,7 +477,6 @@ async function submitItem() {
               @click="openDetail(item)"
             >
               <div class="flex items-center gap-1.5 text-gray-300 text-sm">
-                <!-- 實心橘色地圖釘 SVG -->
                 <svg 
                   xmlns="http://www.w3.org/2000/svg" 
                   viewBox="0 0 24 24" 
@@ -486,8 +485,6 @@ async function submitItem() {
                 >
                   <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
                 </svg>
-  
-                <!-- 地點名稱 -->
                 <span>{{ item.location }}</span>
               </div>
               <span class="text-xs font-bold text-white shrink-0">查看詳情 →</span>
@@ -546,28 +543,24 @@ async function submitItem() {
                 <h3 class="text-base font-bold text-white truncate sm:text-lg">{{ item.title }}</h3>
                 
                 <div class="space-y-1.5 text-sm text-gray-300 pt-1">
-                  <!-- 第一行：地點（配上實心橘色地圖釘 SVG） -->
                   <div class="flex items-center gap-1.5">
                     <svg 
                       xmlns="http://www.w3.org/2000/svg" 
                       viewBox="0 0 24 24" 
                       fill="#ff9000" 
                       class="w-4 h-4 flex-shrink-0"
-                      style="width: 16px; height: 16px; min-width: 16px;"
                     >
                       <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
                     </svg>
                     <span>{{ item.location }}</span>
                   </div>
 
-                  <!-- 第二行：時間（日曆/時間專用 ICON，自動過濾 T 與 Z） -->
                   <div class="flex items-center gap-1.5">
                     <svg 
                       xmlns="http://www.w3.org/2000/svg" 
                       viewBox="0 0 24 24" 
                       fill="#ff9000" 
                       class="w-4 h-4 flex-shrink-0"
-                      style="width: 16px; height: 16px; min-width: 16px;"
                     >
                       <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75A3.75 3.75 0 0122.5 8.25v10.5A3.75 3.75 0 0118.75 22.5H5.25A3.75 3.75 0 011.5 18.75V8.25A3.75 3.75 0 015.25 4.5h.75V3a.75.75 0 01.75-.75zm14.25 7.5H3v9a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18.75v-9z" clip-rule="evenodd" />
                     </svg>
@@ -587,11 +580,11 @@ async function submitItem() {
 
         <!-- 分頁控制 -->
         <div v-if="totalPages > 1" class="mt-8 flex justify-center items-center gap-2 sm:mt-10">
-          <button :disabled="currentPage === 1" @click="currentPage--" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm">&lt;</button>
+          <button :disabled="currentPage === 1" @click="currentPage--" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm"><</button>
           <button v-for="page in totalPages" :key="page" @click="currentPage = page" :class="currentPage === page ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#121212] text-[#888888]'" class="px-3 py-1.5 rounded-xl text-xs font-bold sm:px-4 sm:py-2 sm:text-sm">
             {{ page }}
           </button>
-          <button :disabled="currentPage === totalPages" @click="currentPage++" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm">&gt;</button>
+          <button :disabled="currentPage === totalPages" @click="currentPage++" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm">></button>
         </div>
 
         <p v-if="filteredItems.length === 0" class="py-16 text-center text-sm text-[#555555]">
@@ -619,35 +612,30 @@ async function submitItem() {
 
         <h2 class="text-lg font-black text-[#ffffff] mb-2 sm:text-xl">{{ selectedItem.title }}</h2>
         
-        <!-- 地點行（實心橘色地圖釘 SVG） -->
         <p class="text-xs text-[#ffffff] mb-1 sm:text-sm flex items-center gap-2">
           <svg 
             xmlns="http://www.w3.org/2000/svg" 
             viewBox="0 0 24 24" 
             fill="#ff9000" 
             class="w-4 h-4 flex-shrink-0"
-            style="width: 16px; height: 16px; min-width: 16px;"
           >
             <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
           </svg>
           地點：{{ selectedItem.location }}
         </p>
 
-        <!-- 時間行（日曆 SVG） --> 
         <p class="text-xs text-[#ffffff] mb-6 sm:text-sm flex items-center gap-2">
           <svg 
             xmlns="http://www.w3.org/2000/svg" 
             viewBox="0 0 24 24" 
             fill="#ff9000" 
             class="w-4 h-4 flex-shrink-0"
-            style="width: 16px; height: 16px; min-width: 16px;"
           >
             <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75A3.75 3.75 0 0122.5 8.25v10.5A3.75 3.75 0 0118.75 22.5H5.25A3.75 3.75 0 011.5 18.75V8.25A3.75 3.75 0 015.25 4.5h.75V3a.75.75 0 01.75-.75zm14.25 7.5H3v9a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18.75v-9z" clip-rule="evenodd" />
           </svg>
           時間：{{ selectedItem.date }}
         </p>
 
-        <!-- 點擊直接刪除（不需二次確認） -->
         <button
           type="button"
           class="w-full rounded-xl bg-[#3f0f15] py-2.5 text-xs font-bold text-[#f87171] hover:bg-[#5f131d] transition sm:py-3 sm:text-sm"
@@ -833,6 +821,7 @@ async function submitItem() {
                 type="text"
                 placeholder="4碼英數字"
                 class="flex-1 rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+                @keyup.enter="handleLoginSubmit"
               />
               <div 
                 class="bg-[#222222] text-[#ff9000] font-mono font-black text-base px-3 py-1.5 rounded-xl tracking-widest select-none cursor-pointer hover:bg-[#333333] transition sm:text-lg sm:px-4 sm:py-2"

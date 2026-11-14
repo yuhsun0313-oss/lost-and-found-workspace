@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use App\Models\Item; // 假設你的物品 Model 名稱為 Item
+use Illuminate\Support\Facades\Log;
+use App\Models\Item;
 
 class AiController extends Controller
 {
@@ -16,16 +17,31 @@ class AiController extends Controller
             return response()->json(['success' => false, 'message' => '請提供物品描述'], 400);
         }
 
-        // 1. 從資料庫取得所有物品資料
-        $items = Item::all(['id', 'title', 'category', 'location', 'date']);
+        // 💡 1. 必須先從資料庫取得物品清單（請根據你的 Model 名稱調整，例如 Item::all() 或 LostItem::all()）
+        $items = \App\Models\Item::all(); 
 
-        // 2. 組合給 Ollama 的 Prompt
-        $prompt = "你是一個失物招領 AI 助手。使用者遺失了：\"{$userDescription}\"\n";
-        $prompt .= "以下是目前資料庫中的失物清單：\n" . json_encode($items, JSON_UNESCAPED_UNICODE) . "\n";
-        $prompt .= "請分析使用者的描述，找出最可能相符的前 3 筆物品。你必須嚴格只回傳一個包含相符物品 ID 的 JSON 陣列，例如：[\"1\", \"3\"]，不要包含任何其他說明文字。";
+        // 2. 將物品清單轉成乾淨的 JSON 字串
+        $itemsJson = json_encode($items, JSON_UNESCAPED_UNICODE);
+
+        // 3. 組合給 Ollama 的 Prompt
+        $prompt = "你是一個專業的失物招領比對助手。
+                   請比對【使用者描述】與【資料庫物品清單】，找出高度相似或可能的物品。
+
+                  【比對規則】：
+                   1. 顏色、品牌、物品類型若吻合，優先列入。
+                   2. 若沒有任何物品符合描述，請回傳空陣列 `[]`，絕不可胡亂推薦。
+                   3. 嚴禁輸出任何解釋、開場白或結尾，只能輸出標準 JSON 格式。
+
+                  【使用者描述】：{$userDescription}
+
+                  【資料庫物品清單】：
+                   {$itemsJson}
+
+                   請輸出格式如下：
+                   {\"ids\": [\"1\", \"2\"]}";
 
         try {
-            // 3. 使用 Laravel 的 Http Facade 發送請求給本機的 Ollama
+            // 3. 使用 Laravel 的 Http Facade 發送請求給本機的 Ollama[cite: 3]
             $response = Http::timeout(60)->post('http://127.0.0.1:11434/api/generate', [
                 'model' => 'llama3', // 請確認與你本地下載的模型名稱一致
                 'prompt' => $prompt,
@@ -33,11 +49,25 @@ class AiController extends Controller
                 'format' => 'json'
             ]);
 
+            // 記錄 Ollama 回傳的原始資料供除錯用[cite: 3]
+            \Log::info('Ollama Response:', ['response' => $response->json()]);
+
             if ($response->successful()) {
                 $aiData = $response->json();
-                $matchedIds = json_decode($aiData['response'] ?? '[]', true);
+                $rawContent = $aiData['response'] ?? '[]';
+                
+                // 將 Ollama 回傳的字串解碼[cite: 3]
+                $decoded = json_decode($rawContent, true);
 
-                // 4. 根據 AI 回傳的 ID 陣列過濾出對應的物品
+                // 兼容處理：同時支援 {"ids": ["4"]} 與 ["4"] 格式
+                $matchedIds = [];
+                if (isset($decoded['ids']) && is_array($decoded['ids'])) {
+                    $matchedIds = $decoded['ids'];
+                } elseif (is_array($decoded)) {
+                    $matchedIds = $decoded;
+                }
+
+                // 4. 根據 AI 回傳的 ID 陣列過濾出對應的物品[cite: 3]
                 $matchedItems = $items->filter(function ($item) use ($matchedIds) {
                     return in_array((string)$item->id, $matchedIds);
                 })->values();
