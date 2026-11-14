@@ -62,6 +62,11 @@ const showAuthModal = ref(false)
 const authMode = ref('login')
 
 // AI 智慧搜尋相關變數
+// 深色/淺色模式狀態 (true = 深色黑橘, false = 淺色白藍)
+const isDarkMode = ref(false)
+function toggleTheme() {
+  isDarkMode.value = !isDarkMode.value
+}
 const aiQuery = ref('')
 const aiMatches = ref([])
 const isAiSearching = ref(false)
@@ -378,11 +383,11 @@ async function submitItem() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#000000] text-[#ffffff]">
-    <!-- 頂部導覽列 (無邊框無陰影) -->
-    <header class="sticky top-0 z-40 bg-[#121212]">
+  <div class="min-h-screen transition-colors duration-300" :class="isDarkMode ? 'bg-[#000000] text-[#ffffff]' : 'bg-[#f8fafc] text-[#0f172a]'">
+    <!-- 頂部導覽列 -->
+    <header class="sticky top-0 z-40 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212]' : 'bg-white shadow-sm'">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
-        <a href="/" class="text-lg font-black text-[#ff9000] sm:text-xl flex items-center gap-1 tracking-wider">
+        <a href="/" class="text-lg font-black sm:text-xl flex items-center gap-1 tracking-wider" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
           ◈ 尋物雷達
         </a>
         
@@ -390,18 +395,20 @@ async function submitItem() {
         <div class="flex items-center gap-2 sm:gap-3">
           <template v-if="!isLoggedIn">
             <button
-              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#cccccc] hover:bg-[#222222] hover:text-[#ffffff] transition sm:px-4 sm:py-2 sm:text-sm"
+              class="rounded-xl px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:py-2 sm:text-sm"
+              :class="isDarkMode ? 'bg-[#222222] text-[#cccccc] hover:bg-[#333333] hover:text-[#ffffff]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
               @click="openAuth('login')"
             >
               登入 / 註冊
             </button>
           </template>
           <template v-else>
-            <span class="text-xs font-bold text-[#ff9000] sm:text-sm max-w-[100px] sm:max-w-[150px] truncate">
+            <span class="text-xs font-bold sm:text-sm max-w-[100px] sm:max-w-[150px] truncate" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
               👤 {{ currentUser }}
             </span>
             <button
-              class="rounded-xl bg-[#222222] px-3 py-1.5 text-xs font-bold text-[#aaaaaa] hover:bg-[#333333] transition sm:px-4 sm:py-2 sm:text-sm"
+              class="rounded-xl px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:py-2 sm:text-sm"
+              :class="isDarkMode ? 'bg-[#222222] text-[#aaaaaa] hover:bg-[#333333]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
               @click="handleLogout"
             >
               登出
@@ -409,7 +416,8 @@ async function submitItem() {
           </template>
 
           <button
-            class="rounded-xl bg-[#ff9000] px-3.5 py-1.5 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition sm:px-4 sm:py-2 sm:text-sm"
+            class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition sm:px-4 sm:py-2 sm:text-sm"
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handlePublishClick"
           >
             + 刊登物品
@@ -420,22 +428,25 @@ async function submitItem() {
 
     <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
       <!-- 主 Banner 區塊 -->
-      <section class="rounded-3xl bg-[#121212] px-6 py-8 text-white sm:px-12 sm:py-12">
-        <p class="mb-2 text-xs font-bold tracking-widest text-[#ff9000] sm:mb-3 sm:text-sm">CAMPUS LOST & FOUND</p>
-        <h1 class="text-2xl font-black leading-tight sm:text-5xl text-[#ffffff]">遺失的物品，<br /><span class="text-[#ff9000]">讓我們幫你找回。</span></h1>
-        <p class="mt-3 max-w-lg text-xs leading-6 text-[#888888] sm:mt-4 sm:text-sm sm:leading-7">
+      <section class="rounded-3xl px-6 py-8 sm:px-12 sm:py-12 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white shadow-xl text-gray-900 border border-gray-100'">
+        <p class="mb-2 text-xs font-bold tracking-widest sm:mb-3 sm:text-sm" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">CAMPUS LOST & FOUND</p>
+        <h1 class="text-2xl font-black leading-tight sm:text-5xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-[#0f172a]'">遺失的物品，<br /><span :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">讓我們幫你找回。</span></h1>
+        <p class="mt-3 max-w-lg text-xs leading-6 sm:mt-4 sm:text-sm sm:leading-7" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">
           搜尋校園失物，或刊登拾獲物品。透過 AI 智慧比對，推薦可能的失物配對。
         </p>
 
-        <div class="mt-6 flex max-w-xl flex-col gap-2.5 sm:mt-7 sm:flex-row sm:gap-3">
+        <!-- 上方搜尋欄 -->
+        <div class="mt-6 flex max-w-2xl flex-col gap-2.5 sm:mt-7 sm:flex-row sm:gap-3">
           <input
             v-model="keyword"
             type="text"
             placeholder="搜尋耳機、水壺、圖書館..."
-            class="min-w-0 flex-1 rounded-xl bg-[#000000] px-4 py-2.5 text-sm text-[#ffffff] outline-none sm:py-3 placeholder-[#555555]"
+            class="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm outline-none sm:py-3 transition-colors duration-300"
+            :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#555555]' : 'bg-gray-100 text-[#0f172a] placeholder-gray-400 border border-gray-200'"
           />
           <button
-            class="rounded-xl bg-[#ff9000] px-6 py-2.5 text-sm font-bold text-[#000000] hover:bg-[#e07f00] transition sm:py-3"
+            class="rounded-xl px-6 py-2.5 text-sm font-bold transition sm:py-3"
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="category = '全部'"
           >
             搜尋物品
@@ -444,50 +455,85 @@ async function submitItem() {
       </section>
 
       <!-- AI 智慧尋物助手區塊 -->
-      <section class="mt-6 rounded-3xl bg-[#121212] px-6 py-6 sm:px-8 sm:py-8">
-        <h2 class="text-base font-black text-[#ff9000] sm:text-lg mb-1">🤖 AI 智慧尋物助手</h2>
-        <p class="text-xs text-[#888888] sm:text-sm mb-4">輸入您遺失物品的特徵描述，讓 AI 自動比對最有可能的物品！</p>
-        
-        <div class="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
+      <section class="mt-6 rounded-3xl px-6 py-6 sm:px-8 sm:py-8 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212]' : 'bg-white shadow-xl border border-gray-100'">
+        <h2 class="text-base font-black sm:text-lg mb-1 transition-colors duration-300" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">🤖 AI 智慧尋物助手</h2>
+        <p class="text-xs sm:text-sm mb-4 transition-colors duration-300" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">輸入您遺失物品的特徵描述，讓 AI 自動比對最有可能的物品！</p>
+  
+        <!-- 下方搜尋列（與上方等長的 max-w-2xl） -->
+        <div class="flex flex-col gap-2.5 sm:flex-row sm:gap-3 max-w-2xl">
           <input
             v-model="aiQuery"
             type="text"
             placeholder="例如：黑色皮革短夾，裡面有學生證..."
-            class="min-w-0 flex-1 rounded-xl bg-[#000000] px-4 py-2.5 text-sm text-[#ffffff] outline-none sm:py-3 placeholder-[#555555]"
+            class="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm outline-none sm:py-3 transition-colors duration-300"
+            :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#555555]' : 'bg-gray-100 text-[#0f172a] placeholder-gray-400 border border-gray-200'"
             @keyup.enter="handleAiMatch"
           />
           <button
             type="button"
             :disabled="isAiSearching"
-            class="rounded-xl bg-[#ff9000] px-6 py-2.5 text-sm font-bold text-[#000000] hover:bg-[#e07f00] transition sm:py-3 disabled:opacity-50"
+            class="rounded-xl px-6 py-2.5 text-sm font-bold transition sm:py-3 disabled:opacity-50"
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handleAiMatch"
           >
             {{ isAiSearching ? 'AI 比對中...' : 'AI 開始比對' }}
           </button>
         </div>
 
-        <!-- AI 推薦比對結果區塊 -->
+       <!-- AI 推薦比對結果區塊 -->
         <div v-if="aiMatches.length > 0" class="mt-5 space-y-3">
-          <p class="text-xs font-bold text-[#ff9000]">✨ AI 推薦的可能匹配項目：</p>
+          <p class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">✨ AI 推薦的可能匹配項目：</p>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div 
               v-for="item in aiMatches" 
               :key="item.id" 
-              class="p-4 rounded-xl bg-[#000000] flex justify-between items-center cursor-pointer hover:bg-[#1a1a1a] transition"
+              class="overflow-hidden rounded-2xl transition cursor-pointer flex flex-col justify-between"
+              :class="isDarkMode ? 'bg-[#000000] hover:bg-[#1a1a1a]' : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'"
               @click="openDetail(item)"
             >
-              <div class="flex items-center gap-1.5 text-gray-300 text-sm">
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  viewBox="0 0 24 24" 
-                  fill="#ff9000" 
-                  class="w-4 h-4 inline-block flex-shrink-0"
-                >
-                  <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-                </svg>
-                <span>{{ item.location }}</span>
+              <div>
+                <!-- 🖼️ 物品圖片區塊 -->
+                <div class="relative h-44 sm:h-48" :class="isDarkMode ? 'bg-[#1a1a1a]' : 'bg-gray-100'">
+                  <img v-if="item.image" :src="item.image" :alt="item.title" class="h-full w-full object-cover" />
+                  <div v-else class="flex h-full items-center justify-center text-xs sm:text-sm" :class="isDarkMode ? 'text-[#555555]' : 'text-gray-400'">尚無物品照片</div>
+                </div>
+
+                <!-- 內文資訊區塊 -->
+                <div class="p-4 sm:p-5 space-y-1.5">
+                  <!-- 分類 -->
+                  <div class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">[{{ item.category }}]</div>
+                  
+                  <!-- 物品標題 -->
+                  <h3 class="text-base font-black truncate" :class="isDarkMode ? 'text-white' : 'text-gray-900'">{{ item.title }}</h3>
+
+                  <!-- 地點 -->
+                  <div class="flex items-center gap-1.5 text-xs pt-1" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" :fill="isDarkMode ? '#ff9000' : '#1e3a8a'" class="w-4 h-4 shrink-0">
+                      <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                    </svg>
+                    <span>{{ item.location }}</span>
+                  </div>
+
+                  <!-- 時間 -->
+                  <div class="flex items-center gap-1.5 text-xs" :class="isDarkMode ? 'text-gray-400' : 'text-gray-500'">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" :stroke="isDarkMode ? '#ff9000' : '#1e3a8a'" class="w-4 h-4 shrink-0">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                    </svg>
+                    <span>{{ item.date }}</span>
+                  </div>
+                </div>
               </div>
-              <span class="text-xs font-bold text-white shrink-0">查看詳情 →</span>
+
+              <!-- 底部按鈕 -->
+              <div class="p-4 pt-0 sm:p-5 sm:pt-0">
+                <button 
+                  type="button" 
+                  class="w-full rounded-xl py-2 text-center text-xs font-bold transition sm:py-2.5 sm:text-sm"
+                  :class="isDarkMode ? 'bg-[#1f1f1f] text-white hover:bg-[#ff9000] hover:text-[#000000]' : 'bg-gray-200 text-gray-800 hover:bg-[#1e3a8a] hover:text-white'"
+                >
+                  查看詳細內容
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -500,7 +546,9 @@ async function submitItem() {
             v-for="item in categories"
             :key="item"
             class="rounded-full px-3.5 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 sm:text-sm"
-            :class="category === item ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#121212] text-[#888888] hover:text-[#ffffff]'"
+            :class="category === item 
+              ? (isDarkMode ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#1e3a8a] text-white font-bold') 
+              : (isDarkMode ? 'bg-[#121212] text-[#888888] hover:text-[#ffffff]' : 'bg-white text-gray-600 border border-gray-200 hover:text-gray-900 shadow-sm')"
             @click="category = item"
           >
             {{ item }}
@@ -512,23 +560,24 @@ async function submitItem() {
       <section class="mt-8">
         <div class="mb-5 flex items-end justify-between">
           <div>
-            <h2 class="text-xl font-black text-[#ffffff] sm:text-2xl">校園失物列表</h2>
-            <p class="mt-1 text-xs text-[#666666] sm:text-sm">找找看，有沒有你正在尋找的物品。</p>
+            <h2 class="text-xl font-black sm:text-2xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-900'">校園失物列表</h2>
+            <p class="mt-1 text-xs sm:text-sm" :class="isDarkMode ? 'text-[#666666]' : 'text-gray-500'">找找看，有沒有你正在尋找的物品。</p>
           </div>
-          <span class="text-xs text-[#666666] sm:text-sm">{{ filteredItems.length }} 筆紀錄</span>
+          <span class="text-xs sm:text-sm" :class="isDarkMode ? 'text-[#666666]' : 'text-gray-500'">{{ filteredItems.length }} 筆紀錄</span>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
           <article
             v-for="item in paginatedItems"
             :key="item.id"
-            class="overflow-hidden rounded-2xl bg-[#121212] transition hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
+            class="overflow-hidden rounded-2xl transition hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
+            :class="isDarkMode ? 'bg-[#121212]' : 'bg-white shadow-xl border border-gray-100'"
             @click="openDetail(item)"
           >
             <div>
-              <div class="relative h-48 sm:h-52 bg-[#000000]">
+              <div class="relative h-48 sm:h-52" :class="isDarkMode ? 'bg-[#000000]' : 'bg-gray-100'">
                 <img v-if="item.image" :src="item.image" :alt="item.title" class="h-full w-full object-cover" />
-                <div v-else class="flex h-full items-center justify-center text-xs text-[#444444] sm:text-sm">尚無物品照片</div>
+                <div v-else class="flex h-full items-center justify-center text-xs sm:text-sm" :class="isDarkMode ? 'text-[#444444]' : 'text-gray-400'">尚無物品照片</div>
                 <span
                   class="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold"
                   :class="item.type === 'found' ? 'bg-[#052e16] text-[#4ade80]' : 'bg-[#451a03] text-[#ff9000]'"
@@ -539,15 +588,15 @@ async function submitItem() {
 
               <!-- 卡片內文區塊 -->
               <div class="p-4 sm:p-5 space-y-2">
-                <div class="text-xs font-bold text-[#ff9000]">[{{ item.category }}]</div>
-                <h3 class="text-base font-bold text-white truncate sm:text-lg">{{ item.title }}</h3>
+                <div class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">[{{ item.category }}]</div>
+                <h3 class="text-base font-bold truncate sm:text-lg" :class="isDarkMode ? 'text-white' : 'text-gray-900'">{{ item.title }}</h3>
                 
-                <div class="space-y-1.5 text-sm text-gray-300 pt-1">
+                <div class="space-y-1.5 text-sm pt-1" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
                   <div class="flex items-center gap-1.5">
                     <svg 
                       xmlns="http://www.w3.org/2000/svg" 
                       viewBox="0 0 24 24" 
-                      fill="#ff9000" 
+                      :fill="isDarkMode ? '#ff9000' : '#1e3a8a'" 
                       class="w-4 h-4 flex-shrink-0"
                     >
                       <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
@@ -559,7 +608,7 @@ async function submitItem() {
                     <svg 
                       xmlns="http://www.w3.org/2000/svg" 
                       viewBox="0 0 24 24" 
-                      fill="#ff9000" 
+                      :fill="isDarkMode ? '#ff9000' : '#1e3a8a'" 
                       class="w-4 h-4 flex-shrink-0"
                     >
                       <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75A3.75 3.75 0 0122.5 8.25v10.5A3.75 3.75 0 0118.75 22.5H5.25A3.75 3.75 0 011.5 18.75V8.25A3.75 3.75 0 015.25 4.5h.75V3a.75.75 0 01.75-.75zm14.25 7.5H3v9a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18.75v-9z" clip-rule="evenodd" />
@@ -571,7 +620,10 @@ async function submitItem() {
             </div>
 
             <div class="p-4 pt-0 sm:p-5 sm:pt-0">
-              <div class="w-full text-center rounded-xl bg-[#1e1e1e] py-2 text-xs font-bold text-white hover:bg-[#ff9000] hover:text-[#000000] transition sm:py-2.5 sm:text-sm">
+              <div 
+                class="w-full text-center rounded-xl py-2 text-xs font-bold transition sm:py-2.5 sm:text-sm"
+                :class="isDarkMode ? 'bg-[#1e1e1e] text-white hover:bg-[#ff9000] hover:text-[#000000]' : 'bg-gray-100 text-gray-800 hover:bg-[#1e3a8a] hover:text-white'"
+              >
                 查看詳細內容
               </div>
             </div>
@@ -580,14 +632,34 @@ async function submitItem() {
 
         <!-- 分頁控制 -->
         <div v-if="totalPages > 1" class="mt-8 flex justify-center items-center gap-2 sm:mt-10">
-          <button :disabled="currentPage === 1" @click="currentPage--" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm"><</button>
-          <button v-for="page in totalPages" :key="page" @click="currentPage = page" :class="currentPage === page ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#121212] text-[#888888]'" class="px-3 py-1.5 rounded-xl text-xs font-bold sm:px-4 sm:py-2 sm:text-sm">
+          <button 
+            :disabled="currentPage === 1" 
+            @click="currentPage--" 
+            class="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm transition"
+            :class="isDarkMode ? 'bg-[#121212] text-[#888888]' : 'bg-white text-gray-700 border border-gray-200 shadow-sm'"
+          ><</button>
+          
+          <button 
+            v-for="page in totalPages" 
+            :key="page" 
+            @click="currentPage = page" 
+            :class="currentPage === page 
+              ? (isDarkMode ? 'bg-[#ff9000] text-[#000000] font-bold' : 'bg-[#1e3a8a] text-white font-bold') 
+              : (isDarkMode ? 'bg-[#121212] text-[#888888]' : 'bg-white text-gray-700 border border-gray-200 shadow-sm')" 
+            class="px-3 py-1.5 rounded-xl text-xs font-bold sm:px-4 sm:py-2 sm:text-sm transition"
+          >
             {{ page }}
           </button>
-          <button :disabled="currentPage === totalPages" @click="currentPage++" class="px-3 py-1.5 rounded-xl bg-[#121212] text-xs font-bold text-[#888888] disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm">></button>
+          
+          <button 
+            :disabled="currentPage === totalPages" 
+            @click="currentPage++" 
+            class="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-30 sm:px-4 sm:py-2 sm:text-sm transition"
+            :class="isDarkMode ? 'bg-[#121212] text-[#888888]' : 'bg-white text-gray-700 border border-gray-200 shadow-sm'"
+          >></button>
         </div>
 
-        <p v-if="filteredItems.length === 0" class="py-16 text-center text-sm text-[#555555]">
+        <p v-if="filteredItems.length === 0" class="py-16 text-center text-sm" :class="isDarkMode ? 'text-[#555555]' : 'text-gray-400'">
           找不到符合條件的物品，試試其他關鍵字。
         </p>
       </section>
@@ -596,41 +668,31 @@ async function submitItem() {
     <!-- 詳細資料視窗 -->
     <div
       v-if="selectedItem"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       @click.self="selectedItem = null"
     >
-      <div class="w-full max-w-md rounded-2xl bg-[#121212] p-5 max-h-[90vh] overflow-y-auto sm:p-6">
+      <div class="w-full max-w-md rounded-2xl p-5 max-h-[90vh] overflow-y-auto sm:p-6 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white text-gray-900 shadow-2xl'">
         <div class="flex items-center justify-between mb-4">
-          <span class="text-xs font-bold text-[#ff9000]">{{ selectedItem.category }}</span>
-          <button class="text-[#666666] hover:text-[#ffffff] font-bold text-sm" @click="selectedItem = null">✕ 關閉</button>
+          <span class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">{{ selectedItem.category }}</span>
+          <button class="font-bold text-sm transition" :class="isDarkMode ? 'text-[#666666] hover:text-[#ffffff]' : 'text-gray-400 hover:text-gray-700'" @click="selectedItem = null">✕ 關閉</button>
         </div>
 
-        <div class="relative h-48 overflow-hidden rounded-xl bg-[#000000] mb-4 sm:h-52">
+        <div class="relative h-48 overflow-hidden rounded-xl mb-4 sm:h-52" :class="isDarkMode ? 'bg-[#000000]' : 'bg-gray-100'">
           <img v-if="selectedItem.image" :src="selectedItem.image" :alt="selectedItem.title" class="h-full w-full object-cover" />
-          <div v-else class="flex h-full items-center justify-center text-sm text-[#444444]">尚無物品照片</div>
+          <div v-else class="flex h-full items-center justify-center text-sm" :class="isDarkMode ? 'text-[#444444]' : 'text-gray-400'">尚無物品照片</div>
         </div>
 
-        <h2 class="text-lg font-black text-[#ffffff] mb-2 sm:text-xl">{{ selectedItem.title }}</h2>
+        <h2 class="text-lg font-black mb-2 sm:text-xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-900'">{{ selectedItem.title }}</h2>
         
-        <p class="text-xs text-[#ffffff] mb-1 sm:text-sm flex items-center gap-2">
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            viewBox="0 0 24 24" 
-            fill="#ff9000" 
-            class="w-4 h-4 flex-shrink-0"
-          >
+        <p class="text-xs mb-1 sm:text-sm flex items-center gap-2" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" :fill="isDarkMode ? '#ff9000' : '#1e3a8a'" class="w-4 h-4 shrink-0">
             <path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
           </svg>
           地點：{{ selectedItem.location }}
         </p>
 
-        <p class="text-xs text-[#ffffff] mb-6 sm:text-sm flex items-center gap-2">
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
-            viewBox="0 0 24 24" 
-            fill="#ff9000" 
-            class="w-4 h-4 flex-shrink-0"
-          >
+        <p class="text-xs mb-6 sm:text-sm flex items-center gap-2" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" :fill="isDarkMode ? '#ff9000' : '#1e3a8a'" class="w-4 h-4 shrink-0">
             <path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3a.75.75 0 011.5 0v1.5h.75A3.75 3.75 0 0122.5 8.25v10.5A3.75 3.75 0 0118.75 22.5H5.25A3.75 3.75 0 011.5 18.75V8.25A3.75 3.75 0 015.25 4.5h.75V3a.75.75 0 01.75-.75zm14.25 7.5H3v9a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18.75v-9z" clip-rule="evenodd" />
           </svg>
           時間：{{ selectedItem.date }}
@@ -638,7 +700,7 @@ async function submitItem() {
 
         <button
           type="button"
-          class="w-full rounded-xl bg-[#3f0f15] py-2.5 text-xs font-bold text-[#f87171] hover:bg-[#5f131d] transition sm:py-3 sm:text-sm"
+          class="w-full rounded-xl py-2.5 text-xs font-bold transition sm:py-3 sm:text-sm bg-[#3f0f15] text-[#f87171] hover:bg-[#5f131d]"
           @click="deleteItem(selectedItem.id)"
         >
           已找到，確定刪除？
@@ -649,21 +711,23 @@ async function submitItem() {
     <!-- 刊登表單視窗 -->
     <div
       v-if="showForm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       @click.self="showForm = false"
     >
-      <div class="w-full max-w-lg rounded-2xl bg-[#121212] p-5 max-h-[90vh] overflow-y-auto sm:p-6">
-        <h2 class="text-lg font-black text-[#ffffff] sm:text-xl">刊登失物 / 拾獲物品</h2>
-        <p class="mt-1 text-xs text-[#888888] sm:text-sm">填寫詳細資訊，讓失主或拾獲人更容易找到。</p>
+      <div class="w-full max-w-lg rounded-2xl p-5 max-h-[90vh] overflow-y-auto sm:p-6 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white text-gray-900 shadow-2xl'">
+        <h2 class="text-lg font-black sm:text-xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-900'">刊登失物 / 拾獲物品</h2>
+        <p class="mt-1 text-xs sm:text-sm" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-500'">填寫詳細資訊，讓失主或拾獲人更容易找到。</p>
 
         <div class="mt-5 space-y-4">
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">類型</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">類型</label>
             <div class="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
-                :class="formType === 'lost' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#222222] text-[#ffffff] hover:bg-[#222222] hover:text-[#ffffff]'"
+                :class="formType === 'lost' 
+                  ? (isDarkMode ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#1e3a8a] text-white') 
+                  : (isDarkMode ? 'bg-[#222222] text-[#ffffff] hover:bg-[#333333]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')"
                 @click="formType = 'lost'"
               >
                 我弄丟了 (正在尋找)
@@ -671,7 +735,9 @@ async function submitItem() {
               <button
                 type="button"
                 class="py-2.5 rounded-xl text-xs font-bold transition sm:text-sm"
-                :class="formType === 'found' ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#222222] text-[#ffffff] hover:bg-[#222222] hover:text-[#ffffff]'"
+                :class="formType === 'found' 
+                  ? (isDarkMode ? 'bg-[#ff9000] text-[#000000]' : 'bg-[#1e3a8a] text-white') 
+                  : (isDarkMode ? 'bg-[#222222] text-[#ffffff] hover:bg-[#333333]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')"
                 @click="formType = 'found'"
               >
                 我撿到了 (已拾獲)
@@ -680,21 +746,23 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">物品名稱 *</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">物品名稱 *</label>
             <input
               v-model="formTitle"
               type="text"
               placeholder="例如：黑色筆電包、學生證"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">分類</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">分類</label>
             <select
               v-model="formCategory"
               required
-              class="w-full rounded-xl bg-[#000000] text-[#ffffff] px-4 py-2 text-sm outline-none sm:py-2.5"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff]' : 'bg-gray-100 text-gray-900 border border-gray-200'"
             >
               <option value="" disabled selected>請選擇物品分類</option>
               <option value="電子產品">電子產品</option>
@@ -705,37 +773,52 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">地點 *</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">地點 *</label>
             <input
               v-model="formLocation"
               type="text"
               placeholder="例如：圖書館 3 樓、體育館外"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">日期</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">日期</label>
             <input
               v-model="formDate"
               type="datetime-local"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff]' : 'bg-gray-100 text-gray-900 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#888888] mb-1">上傳物品照片 (選填)</label>
-            <input
-              type="file"
-              accept="image/*"
-              class="w-full text-xs text-[#888888] file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#ff9000] file:text-[#000000] hover:file:bg-[#e07f00] cursor-pointer bg-[#000000] rounded-xl p-1 sm:text-sm"
-              @change="handleImageUpload"
-            />
-            <div v-if="formImage" class="mt-3 relative h-36 w-full overflow-hidden rounded-xl bg-[#000000]">
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">上傳物品照片 (選填)</label>
+            
+            <!-- 隱藏原生 file input，改用自訂橫向排版 -->
+            <div class="flex items-center justify-between rounded-xl px-4 py-2 transition-colors duration-300" :class="isDarkMode ? 'bg-[#000000]' : 'bg-gray-100 border border-gray-200'">
+              <span class="text-xs truncate pr-2" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-500'">
+                {{ formImage ? '已選擇照片' : '未選擇任何檔案' }}
+              </span>
+              
+              <label class="cursor-pointer rounded-lg px-4 py-1.5 text-xs font-bold transition shrink-0" :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'">
+                選擇檔案
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="handleImageUpload"
+                />
+              </label>
+            </div>
+
+            <!-- 預覽圖片區塊 -->
+            <div v-if="formImage" class="mt-3 relative h-36 w-full overflow-hidden rounded-xl bg-black">
               <img :src="formImage" class="h-full w-full object-cover" />
               <button
                 type="button"
-                class="absolute top-2 right-2 rounded-full bg-[#000000]/80 px-2 py-1 text-xs text-white hover:bg-[#000000]"
+                class="absolute top-2 right-2 rounded-full bg-black/80 px-2 py-1 text-xs text-white hover:bg-black"
                 @click="formImage = ''"
               >
                 ✕ 移除照片
@@ -747,7 +830,8 @@ async function submitItem() {
         <div class="mt-6 flex gap-3">
           <button 
             type="button" 
-            class="flex-1 rounded-xl bg-[#ff9000] py-2.5 font-bold text-[#000000] hover:bg-[#e07f00] text-xs sm:text-sm sm:py-3" 
+            class="flex-1 rounded-xl py-2.5 font-bold text-xs sm:text-sm sm:py-3 transition" 
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="submitItem"
           >
             確認送出
@@ -755,7 +839,8 @@ async function submitItem() {
 
           <button
             type="button"
-            class="flex-1 rounded-xl bg-[#222222] py-2.5 font-bold text-[#888888] hover:bg-[#333333] hover:text-[#ffffff] text-xs sm:text-sm sm:py-3"
+            class="flex-1 rounded-xl py-2.5 font-bold text-xs sm:text-sm sm:py-3 transition"
+            :class="isDarkMode ? 'bg-[#222222] text-[#888888] hover:bg-[#333333] hover:text-[#ffffff]' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
             @click="showForm = false"
           >
             取消
@@ -767,17 +852,17 @@ async function submitItem() {
     <!-- 獨立登入/註冊彈窗 -->
     <div
       v-if="showAuthModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       @click.self="showAuthModal = false"
     >
-      <div class="w-full max-w-md rounded-2xl bg-[#121212] p-5 relative max-h-[90vh] overflow-y-auto sm:p-6">
-        <button class="absolute right-4 top-4 text-[#666666] hover:text-[#ffffff] font-bold text-sm" @click="showAuthModal = false">✕</button>
+      <div class="w-full max-w-md rounded-2xl p-5 relative max-h-[90vh] overflow-y-auto sm:p-6 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white text-gray-900 shadow-2xl'">
+        <button class="absolute right-4 top-4 font-bold text-sm transition" :class="isDarkMode ? 'text-[#666666] hover:text-[#ffffff]' : 'text-gray-400 hover:text-gray-700'" @click="showAuthModal = false">✕</button>
 
-        <div class="flex mb-5">
+        <div class="flex mb-5 border-b pb-2" :class="isDarkMode ? 'border-gray-800' : 'border-gray-200'">
           <button
             type="button"
             class="flex-1 pb-3 text-center font-bold text-base sm:text-lg transition"
-            :class="authMode === 'login' ? 'text-[#ff9000]' : 'text-[#555555] hover:text-[#888888]'"
+            :class="authMode === 'login' ? (isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]') : (isDarkMode ? 'text-[#555555] hover:text-[#888888]' : 'text-gray-400 hover:text-gray-600')"
             @click="authMode = 'login'"
           >
             系統登入 Login
@@ -785,7 +870,7 @@ async function submitItem() {
           <button
             type="button"
             class="flex-1 pb-3 text-center font-bold text-base sm:text-lg transition"
-            :class="authMode === 'register' ? 'text-[#ff9000]' : 'text-[#555555] hover:text-[#888888]'"
+            :class="authMode === 'register' ? (isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]') : (isDarkMode ? 'text-[#555555] hover:text-[#888888]' : 'text-gray-400 hover:text-gray-600')"
             @click="authMode = 'register'"
           >
             帳號註冊 Register
@@ -794,37 +879,41 @@ async function submitItem() {
 
         <div v-if="authMode === 'login'" class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">帳號 (Name or Email)</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">帳號 (Name or Email)</label>
             <input
               v-model="loginEmail"
               type="text"
               placeholder="請輸入使用者名稱 或 Email"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">密碼 (Password)</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">密碼 (Password)</label>
             <input
               v-model="loginPassword"
               type="password"
               placeholder="輸入密碼"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">驗證碼 (Captcha)</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">驗證碼 (Captcha)</label>
             <div class="flex gap-2 items-center">
               <input
                 v-model="loginCaptchaInput"
                 type="text"
                 placeholder="4碼英數字"
-                class="flex-1 rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+                class="flex-1 rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+                :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
                 @keyup.enter="handleLoginSubmit"
               />
               <div 
-                class="bg-[#222222] text-[#ff9000] font-mono font-black text-base px-3 py-1.5 rounded-xl tracking-widest select-none cursor-pointer hover:bg-[#333333] transition sm:text-lg sm:px-4 sm:py-2"
+                class="font-mono font-black text-base px-3 py-1.5 rounded-xl tracking-widest select-none cursor-pointer transition sm:text-lg sm:px-4 sm:py-2"
+                :class="isDarkMode ? 'bg-[#222222] text-[#ff9000] hover:bg-[#333333]' : 'bg-gray-200 text-[#1e3a8a] hover:bg-gray-300'"
                 title="點擊更換驗證碼"
                 @click="generateCaptcha"
               >
@@ -836,7 +925,8 @@ async function submitItem() {
 
           <button
             type="button"
-            class="w-full rounded-xl bg-[#ff9000] py-2.5 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition mt-2 sm:py-3 sm:text-sm"
+            class="w-full rounded-xl py-2.5 text-xs font-bold transition mt-2 sm:py-3 sm:text-sm"
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handleLoginSubmit"
           >
             登入 (Login)
@@ -845,48 +935,53 @@ async function submitItem() {
 
         <div v-else class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">暱稱 (Name) *</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">暱稱 (Name) *</label>
             <input
               v-model="registerName"
               type="text"
               placeholder="請輸入姓名"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">帳號 / 電子郵件 (Email) *</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">帳號 / 電子郵件 (Email) *</label>
             <input
               v-model="registerEmail"
               type="email"
               placeholder="例如 s10912345@school.edu.tw"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">設定密碼 (Password) *</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">設定密碼 (Password) *</label>
             <input
               v-model="registerPassword"
               type="password"
               placeholder="請輸入密碼"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#ffffff] mb-1">確認密碼 (Confirm Password) *</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-700'">確認密碼 (Confirm Password) *</label>
             <input
               v-model="registerPasswordConfirm"
               type="password"
               placeholder="再次輸入密碼"
-              class="w-full rounded-xl bg-[#000000] px-4 py-2 text-sm text-[#ffffff] outline-none sm:py-2.5 placeholder-[#444444]"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
             />
           </div>
 
           <button
             type="button"
-            class="w-full rounded-xl bg-[#ff9000] py-2.5 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition mt-2 sm:py-3 sm:text-sm"
+            class="w-full rounded-xl py-2.5 text-xs font-bold transition mt-2 sm:py-3 sm:text-sm"
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handleRegisterSubmit"
           >
             註冊帳號 (Register)
@@ -898,20 +993,37 @@ async function submitItem() {
     <!-- 統一的浮動提示視窗 (Toast Modal) -->
     <div
       v-if="toastModal.show"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/85 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       @click.self="toastModal.show = false"
     >
-      <div class="w-full max-w-sm rounded-2xl bg-[#121212] p-5 text-center sm:p-6">
-        <h3 class="text-base font-black text-[#ff9000] mb-2 sm:text-lg">{{ toastModal.title }}</h3>
-        <p class="text-xs text-[#cccccc] mb-5 whitespace-pre-line leading-relaxed sm:text-sm sm:mb-6">{{ toastModal.message }}</p>
+      <div class="w-full max-w-sm rounded-2xl p-5 text-center sm:p-6 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white text-gray-900 shadow-2xl'">
+        <h3 class="text-base font-black mb-2 sm:text-lg" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">{{ toastModal.title }}</h3>
+        <p class="text-xs mb-5 whitespace-pre-line leading-relaxed sm:text-sm sm:mb-6" :class="isDarkMode ? 'text-[#cccccc]' : 'text-gray-600'">{{ toastModal.message }}</p>
         <button
           type="button"
-          class="w-full rounded-xl bg-[#ff9000] py-2 text-xs font-bold text-[#000000] hover:bg-[#e07f00] transition sm:py-2.5 sm:text-sm"
+          class="w-full rounded-xl py-2 text-xs font-bold transition sm:py-2.5 sm:text-sm"
+          :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
           @click="toastModal.show = false"
         >
           確定
         </button>
       </div>
     </div>
+
+    <!-- 右下角浮動主題切換按鈕 -->
+    <button 
+      type="button"
+      @click="toggleTheme"
+      class="fixed bottom-6 right-6 z-50 flex items-center justify-center w-12 h-12 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 cursor-pointer"
+      :class="isDarkMode ? 'bg-[#ff9000] text-black shadow-orange-500/20' : 'bg-[#1e3a8a] text-white shadow-blue-900/20'"
+      title="切換深色/淺色模式"
+    >
+      <svg v-if="isDarkMode" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+      </svg>
+      <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+      </svg>
+    </button>
   </div>
 </template>

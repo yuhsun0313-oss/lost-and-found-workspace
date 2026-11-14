@@ -9,82 +9,97 @@ use App\Models\Item;
 
 class AiController extends Controller
 {
-    public function matchItems(Request $request)
-    {
-        $userDescription = $request->input('userDescription');
-
-        if (!$userDescription) {
-            return response()->json(['success' => false, 'message' => '請提供物品描述'], 400);
+    public function aiMatch(Request $request)
+    {   
+        $ollamaUrl = "https://tapping-carol-engaging.ngrok-free.dev/api/generate";
+        $userDescription = trim($request->input('userDescription'));
+        // 🛡️ 防呆機制：若輸入為空、字數過少或全為特殊符號，直接攔截回傳空陣列
+        if (!$userDescription || mb_strlen($userDescription) < 2 || preg_match('/^[^\w\s]+$/u', $userDescription)) {
+            return response()->json([
+                'success' => true,
+                'matches' => []
+            ]);
         }
 
-        // 💡 1. 必須先從資料庫取得物品清單（請根據你的 Model 名稱調整，例如 Item::all() 或 LostItem::all()）
-        $items = \App\Models\Item::all(); 
+        // 步驟 1：建構全能通用的語意擴充與同義詞提示詞 (Prompt)
+        $prompt = "你是一個校園失物招領系統的智慧語意檢索與同義詞擴充專家。請分析使用者輸入的任意物品描述。
 
-        // 2. 將物品清單轉成乾淨的 JSON 字串
-        $itemsJson = json_encode($items, JSON_UNESCAPED_UNICODE);
+【核心運作規則】：
+1. 意圖過濾：若輸入內容屬於日常問候、情緒抒發或與失物招領無關的言論，請回傳：{\"keywords\": []}。
+2. 錯別字與諧音糾正：自動糾正錯別字、注音或諧音（例如「原資比」->「原子筆」、「保憲套」->「保險套」）。
+3. 全方位同義詞與俗稱擴充（Universal Synonyms & Aliases）：無論使用者輸入什麼物品，你必須主動聯想並列出該物品的所有常見同義詞、台語/口語俗稱、英文簡稱、正式名稱以及相關的上位/下位概念。例如：
+   - 輸入「手機」或「行動電話」 -> 必須擴充出彼此以及「智慧型手機」、「iPhone」、「Android」、「手機」等。
+   - 輸入「水壺」 -> 必須擴充出「水杯」、「水瓶」、「保溫瓶」、「水樽」。
+   - 輸入「鑰匙」 -> 必須擴充出「門鑰」、「車鑰匙」、「磁扣」、「感應卡」。
+   - 輸入任何物品，皆須舉一反三提供其所有可能的同義詞與替換稱呼。
 
-        // 3. 組合給 Ollama 的 Prompt
-        $prompt = "你是一個專業的失物招領比對助手。
-                   請比對【使用者描述】與【資料庫物品清單】，找出高度相似或可能的物品。
+請將使用者輸入的原詞、糾正後的詞、以及所有擴充的同義詞與聯想詞全部放入陣列，格式嚴格規定如下：{\"keywords\": [\"原詞\", \"同義詞1\", \"同義詞2\", \"聯想詞3\"]}
 
-                  【比對規則】：
-                   1. 顏色、品牌、物品類型若吻合，優先列入。
-                   2. 若沒有任何物品符合描述，請回傳空陣列 `[]`，絕不可胡亂推薦。
-                   3. 嚴禁輸出任何解釋、開場白或結尾，只能輸出標準 JSON 格式。
-
-                  【使用者描述】：{$userDescription}
-
-                  【資料庫物品清單】：
-                   {$itemsJson}
-
-                   請輸出格式如下：
-                   {\"ids\": [\"1\", \"2\"]}";
-
+使用者輸入：{$userDescription}
+請嚴格回傳標準 JSON 格式物件（絕對不要有其他多餘文字）：";
         try {
-            // 3. 使用 Laravel 的 Http Facade 發送請求給本機的 Ollama[cite: 3]
-            $response = Http::timeout(60)->post('http://127.0.0.1:11434/api/generate', [
-                'model' => 'llama3', // 請確認與你本地下載的模型名稱一致
-                'prompt' => $prompt,
-                'stream' => false,
-                'format' => 'json'
-            ]);
+            $response = Http::timeout(60)
+                ->withHeaders([
+                    'ngrok-skip-browser-warning' => 'true', // 👈 這行會直接強制略過 ngrok 的阻擋畫面
+                    'User-Agent' => 'Laravel-Client'
+                ])
+                ->post($ollamaUrl, [
+                    'model' => 'llama3',
+                    'prompt' => $prompt,
+                    'stream' => false,
+                    'format' => 'json',
+                    'options' => [
+                        'temperature' => 0.0,
+                    ]
+                ]);
 
-            // 記錄 Ollama 回傳的原始資料供除錯用[cite: 3]
-            \Log::info('Ollama Response:', ['response' => $response->json()]);
+            Log::info('Ollama Keyword Inference:', ['response' => $response->json()]);
+            $keywords = [];
 
             if ($response->successful()) {
                 $aiData = $response->json();
-                $rawContent = $aiData['response'] ?? '[]';
-                
-                // 將 Ollama 回傳的字串解碼[cite: 3]
-                $decoded = json_decode($rawContent, true);
-
-                // 兼容處理：同時支援 {"ids": ["4"]} 與 ["4"] 格式
-                $matchedIds = [];
-                if (isset($decoded['ids']) && is_array($decoded['ids'])) {
-                    $matchedIds = $decoded['ids'];
-                } elseif (is_array($decoded)) {
-                    $matchedIds = $decoded;
-                }
-
-                // 4. 根據 AI 回傳的 ID 陣列過濾出對應的物品[cite: 3]
-                $matchedItems = $items->filter(function ($item) use ($matchedIds) {
-                    return in_array((string)$item->id, $matchedIds);
-                })->values();
-
-                return response()->json([
-                    'success' => true,
-                    'matches' => $matchedItems
-                ]);
+                $decoded = json_decode($aiData['response'] ?? '{}', true);
+                $keywords = $decoded['keywords'] ?? [];
             }
 
-            return response()->json(['success' => false, 'message' => 'AI 服務無回應'], 500);
+            // 💡 步驟 2：後端備用機制 (Fallback Mechanism)
+            // 如果 AI 的過濾過於保守導致回傳空陣列，但使用者確實輸入了合法的具體詞彙（如「保險套」），
+            // 系統自動啟動備用防呆，直接將使用者輸入納入查詢，確保 100% 不會被誤殺。
+            if (empty($keywords) && mb_strlen($userDescription) >= 2) {
+                $stopwords = ['你好', '早安', '哈囉', 'hi', '嗨', '早'];
+                if (!in_array(mb_strtolower($userDescription), $stopwords)) {
+                    $keywords = [$userDescription];
+                }
+            }
+
+            if (empty($keywords) || !is_array($keywords)) {
+                return response()->json(['success' => true, 'matches' => []]);
+            }
+
+            // 步驟 3：交由資料庫進行多條件模糊查詢 (Database Query)，確保精準且不漏接
+            $matchedItems = Item::where(function ($query) use ($keywords) {
+                foreach ($keywords as $keyword) {
+                    $cleanKeyword = trim($keyword);
+                    if ($cleanKeyword !== '') {
+                        $query->orWhere('title', 'LIKE', "%{$cleanKeyword}%")
+                              ->orWhere('category', 'LIKE', "%{$cleanKeyword}%");
+                    }
+                }
+            })
+            ->latest('id')
+            ->get();
+
+            return response()->json([
+                'success' => true,
+                'matches' => $matchedItems
+            ]);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false, 
-                'message' => '無法連線至 Ollama 本機服務：' . $e->getMessage()
-            ], 500);
-        }
+    Log::error('Ollama Error: ' . $e->getMessage()); // 記錄到日誌
+    return response()->json([
+        'success' => false,
+        'message' => 'Ollama 連線失敗詳情：' . $e->getMessage()
+    ], 500);
+}
     }
 }
