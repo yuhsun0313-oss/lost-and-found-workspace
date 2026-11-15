@@ -44,7 +44,7 @@ class AiController extends Controller
                     'User-Agent' => 'Laravel-Client'
                 ])
                 ->post($ollamaUrl, [
-                    'model' => 'llama3',
+                    'model' => 'llama3:latest',
                     'prompt' => $prompt,
                     'stream' => false,
                     'format' => 'json',
