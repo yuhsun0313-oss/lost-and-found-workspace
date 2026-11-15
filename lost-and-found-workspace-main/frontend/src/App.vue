@@ -70,6 +70,7 @@ function toggleTheme() {
 const aiQuery = ref('')
 const aiMatches = ref([])
 const isAiSearching = ref(false)
+const isSubmittingItem = ref(false)
 
 // 統一的浮動提示視窗 (Toast Modal) 狀態
 const toastModal = reactive({
@@ -348,6 +349,11 @@ const paginatedItems = computed(() => {
 })
 
 async function submitItem() {
+  // 🛡️ 防呆：如果已經在送出中，直接擋掉防止連點
+  if (isSubmittingItem.value) {
+    return
+  }
+
   let errors = []
 
   if (!formTitle.value.trim()) {
@@ -366,6 +372,7 @@ async function submitItem() {
   }
 
   try {
+    isSubmittingItem.value = true // 🔒 鎖定按鈕，防止重複送出
     const response = await fetch(`${API_BASE_URL}/items`, {
       method: 'POST',
       headers: {
@@ -400,6 +407,8 @@ async function submitItem() {
   } catch (error) {
     console.error('刊登錯誤：', error)
     showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  } finally {
+    isSubmittingItem.value = false // 🔓 解除鎖定
   }
 }
 </script>
@@ -852,12 +861,13 @@ async function submitItem() {
         <div class="mt-6 flex gap-3">
           <button 
             type="button" 
-            class="flex-1 rounded-xl py-2.5 font-bold text-xs sm:text-sm sm:py-3 transition" 
+            :disabled="isSubmittingItem"
+            class="flex-1 rounded-xl py-2.5 font-bold text-xs sm:text-sm sm:py-3 transition disabled:opacity-50" 
             :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="submitItem"
-          >
-            確認送出
-          </button>   
+          >   
+          {{ isSubmittingItem ? '送出中...' : '確認送出' }}
+          </button> 
 
           <button
             type="button"
