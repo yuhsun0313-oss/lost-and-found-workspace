@@ -14,6 +14,7 @@ class ItemController extends Controller
     public function index()
     {
         try {
+            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它
             if (!Schema::hasTable('items')) {
                 Schema::create('items', function ($table) {
                     $table->id();
@@ -21,18 +22,33 @@ class ItemController extends Controller
                     $table->string('category');
                     $table->text('description')->nullable();
                     $table->string('location')->nullable();
-                    $table->date('date')->nullable();     // 確保允許空值
-                    $table->string('type')->nullable();     // 確保允許空值
+                    $table->date('date')->nullable();
+                    $table->string('type')->nullable();
                     $table->timestamps();
                 });
             }
 
-            // 直接回傳陣列供前端 .forEach 使用
-            return Item::latest('id')->get();
+            $items = Item::latest('id')->get();
+
+            // 🟢 成功時強制附帶 CORS 標頭
+            return response()->json($items, 200, [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, X-Requested-With, Authorization'
+            ]);
 
         } catch (\Exception $e) {
             Log::error('載入失物清單失敗: ' . $e->getMessage());
-            return response()->json([], 500);
+
+            // 🔴 發生 500 錯誤時，強制帶上 CORS 標頭，把真實錯誤直接吐給前端看！
+            return response()->json([
+                'success' => false,
+                'error_message' => $e->getMessage()
+            ], 500, [
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers' => 'Content-Type, X-Requested-With, Authorization'
+            ]);
         }
     }
 
