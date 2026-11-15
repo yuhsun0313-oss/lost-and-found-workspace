@@ -9,7 +9,8 @@ use App\Models\Item;
 
 class AiController extends Controller
 {
-    public function match(Request $request)
+    // 將方法名稱從 match 改為 aiMatch，對應路由請求
+    public function aiMatch(Request $request)
     {
         try {
             $userDescription = $request->input('userDescription', '');
@@ -37,7 +38,7 @@ class AiController extends Controller
                     'prompt' => $prompt,
                     'stream' => false,
                     'options' => [
-                        'temperature' => 0.6, // 平衡聯想廣度與穩定性
+                        'temperature' => 0.6,
                         'num_predict' => 60
                     ]
                 ]);
