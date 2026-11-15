@@ -22,7 +22,7 @@ class AiController extends Controller
                 ], 200);
             }
 
-            // 1. 基礎文字拆解（僅過濾無意義的助詞與干擾字，保留核心字詞作為防護底線）
+            // 1. 基礎文字拆解（過濾干擾字）
             $stopWords = ['我', '你', '他', '的', '了', '在', '個', '件', '支', '張', '本', '昨天', '今天', '明天', '不見', '遺失', '掉', '找', '尋', '求助', '東西', '物品', '找不到', '看到', '最後'];
             $words = preg_split('/[\s,\p{P}]+/u',$userDescription, -1, PREG_SPLIT_NO_EMPTY);
             
@@ -30,20 +30,19 @@ class AiController extends Controller
                 return mb_strlen($word) > 1 && !in_array($word,$stopWords);
             });
 
-            // 2. 🧠 完全交由 Ollama 進行「任意物品與情境」的動態聯想與結構化解析
-            $cacheKey = 'ai_dynamic_match_' . md5($userDescription);
+            // 2. 🧠 透過 Ollama 進行動態聯想與結構化解析
+            $cacheKey = 'ai_dynamic_match_v4_' . md5($userDescription);
             $aiData = Cache::get($cacheKey, []);
 
             if (empty($aiData)) {$ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
                 
                 try {
-                    // 🎯 核心 Prompt：不寫死任何物品類別，完全讓 LLM 自主發揮同義詞聯想與地點萃取
                     $prompt = "你是一個頂級的失物招領 AI 聯想專家。使用者輸入了任意尋物描述或情境：「{$userDescription}」。\n" .
                         "請發揮強大的語意聯想與推理能力，分析並分離出兩個部分：\n" .
                         "1. items：使用者可能在找的【所有相關物品名稱、同義詞、品牌、泛稱或替代詞】（請盡量多聯想幾種可能代表該物品的詞彙）。\n" .
-                        "2. locations：使用者提到的【可能遺失的地點】（若沒提到則回傳空陣列）。\n" .
+                        "2. locations：使用者提到的【可能遺失的地點】（若沒提到任何地點，請回傳空陣列 []）。\n" .
                         "規則：請務必以純 JSON 格式回覆，絕對不要包含任何 markdown 標記（如 ```json），格式必須嚴格對應：\n" .
-                        "{\"items\": [\"物品原名\", \"同義詞1\", \"同義詞2\"], \"locations\": [\"地點1\"]}\n" .
+                        "{\"items\": [\"物品原名\", \"同義詞1\"], \"locations\": [\"地點1\"]}\n" .
                         "絕對不要輸出額外的廢話、問候語或解釋。";
 
                     $response = Http::timeout(25)->post("{$ollamaUrl}/api/generate", [
@@ -51,15 +50,13 @@ class AiController extends Controller
                         'prompt' => $prompt,
                         'stream' => false,
                         'options' => [
-                            'temperature' => 0.7, // 提高靈敏度，讓 Ollama 對任何奇特輸入都能自由發散聯想
+                            'temperature' => 0.7,
                             'num_predict' => 120
                         ]
                     ]);
 
                     if ($response->successful()) {
                         $rawText = trim($response->json('response', ''));
-                        
-                        // 🧹 強力清理可能包在 markdown 裡的 json 標籤
                         $cleanJson = str_replace(['```json', '```', '`'], '', $rawText);
                         $firstBrace = strpos($cleanJson, '{');
                         $lastBrace = strrpos($cleanJson, '}');
@@ -70,8 +67,7 @@ class AiController extends Controller
                             
                             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                                 $aiData = $decoded;
-                                // 確保有確實抓到內容才寫入快取
-                                if (!empty($aiData['items']) || !empty($aiData['locations'])) {
+                                if (!empty($aiData['items'])) {
                                     Cache::put($cacheKey, $aiData, 600);
                                 }
                             }
@@ -82,17 +78,16 @@ class AiController extends Controller
                 }
             }
 
-            // 整合 AI 動態聯想出的物品與使用者的原始過濾詞
             $targetItems = !empty($aiData['items']) ? array_merge($aiData['items'], array_values($filteredWords)) : array_values($filteredWords);
-            $targetItems[] = $userDescription; // 把原句也放入保底
+            $targetItems[] = $userDescription;
             $targetItems = array_unique(array_filter($targetItems));
 
             $targetLocations = $aiData['locations'] ?? [];
 
-            // 3. 🔍 執行「地點大於物品」的智慧加權資料庫搜尋
+            // 3. 🔍 智慧雙軌搜尋邏輯
             $matchedItems = Item::where(function ($query) use ($targetItems, $targetLocations, $userDescription) {
                 
-                // 優先策略：如果 AI 成功辨識出「地點」，地點必須命中，同時結合 AI 聯想出的所有同義詞進行比對
+                // 軌道 A：當使用者「有明確提到地點」時，執行地點優先篩選
                 if (!empty($targetLocations)) {
                     $query->where(function ($subQuery) use ($targetLocations) {
                         foreach ($targetLocations as $loc) {
@@ -112,24 +107,9 @@ class AiController extends Controller
                             }
                         });
                     }
-                } else {
-                    // 備援策略：沒抓到地點時，用 AI 動態聯想出的所有同義詞與原句進行廣域比對
-                    foreach ($targetItems as $itm) {
-                        if (mb_strlen(trim($itm)) > 1) {
-                            $query->orWhere('title', 'ILIKE', "%{$itm}%")
-                                  ->orWhere('category', 'ILIKE', "%{$itm}%");
-                        }
-                    }
-                    $query->orWhere('title', 'ILIKE', "%{$userDescription}%")
-                          ->orWhere('location', 'ILIKE', "%{$userDescription}%");
-                }
-            })
-            ->latest('id')
-            ->get();
-
-            // 🌟 最終 Demo 保險：如果嚴格交集找不到，自動放寬為純 AI 同義詞搜尋，保證絕對不會開天窗！
-            if ($matchedItems->isEmpty() && !empty($targetItems)) {
-                $matchedItems = Item::where(function ($query) use ($targetItems, $userDescription) {
+                } 
+                // 軌道 B：當使用者「只打物品或情境（無特定地點）」時，直接進行全面廣域同義詞模糊比對！
+                else {
                     foreach ($targetItems as $itm) {
                         if (mb_strlen(trim($itm)) > 1) {
                             $query->orWhere('title', 'ILIKE', "%{$itm}%")
@@ -138,6 +118,22 @@ class AiController extends Controller
                         }
                     }
                     $query->orWhere('title', 'ILIKE', "%{$userDescription}%");
+                }
+            })
+            ->latest('id')
+            ->get();
+
+            // 🌟 最終 Demo 保險：如果找不到任何東西，強制用原句與拆解詞再撈一次
+            if ($matchedItems->isEmpty()) {
+                $matchedItems = Item::where(function ($query) use ($userDescription, $filteredWords) {
+                    $query->orWhere('title', 'ILIKE', "%{$userDescription}%")
+                          ->orWhere('category', 'ILIKE', "%{$userDescription}%");
+                    foreach ($filteredWords as $w) {
+                        if (mb_strlen($w) > 1) {
+                            $query->orWhere('title', 'ILIKE', "%{$w}%")
+                                  ->orWhere('category', 'ILIKE', "%{$w}%");
+                        }
+                    }
                 })
                 ->latest('id')
                 ->get();
