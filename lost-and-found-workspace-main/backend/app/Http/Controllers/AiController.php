@@ -26,18 +26,18 @@ class AiController extends Controller
             $ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
             
             try {
-                // 🧠 強大且發散的 Prompt，嚴格要求 Ollama 純輸出逗號分隔字串
-                $prompt = "你是一個頂級的失物招領 AI 聯想專家。使用者輸入了一段尋物描述：「{$userDescription}」。\n" .
-                    "請發揮強大的語意聯想力，猜測使用者可能在找什麼物品、可能有哪些同義詞、品牌、隱喻或可能的情境關鍵字。\n" .
-                    "請列出 5 到 8 個相關的關鍵字。\n" .
-                    "規則：絕對不要講任何廢話、不要解釋、不要編號、不要引號，只要輸出用半形逗號（,）分隔的關鍵字即可。";
+                // 🧠 完全開放、不加任何範例限制的純粹 AI 聯想 Prompt
+                $prompt = "你是一個失物招領 AI 聯想專家。使用者輸入了尋物描述：「{$userDescription}」。\n" .
+                    "請完全發揮你的語意聯想與推測能力，不管使用者輸入什麼口語、代名詞、地點或模糊形容，請自由聯想出所有可能相關的物品名稱、同義詞、品牌、類別或情境關鍵字。\n" .
+                    "請列出 5 到 8 個相關關鍵字。\n" .
+                    "規則：絕對不要講任何廢話、不要解釋、不要舉例，只要輸出用半形逗號（,）分隔的關鍵字串即可。";
 
                 $response = Http::timeout(10)->post("{$ollamaUrl}/api/generate", [
                     'model' => 'llama3:latest',
                     'prompt' => $prompt,
                     'stream' => false,
                     'options' => [
-                        'temperature' => 0.7,
+                        'temperature' => 0.8, // 提高靈敏度，讓 AI 發揮最大自由聯想空間
                         'num_predict' => 60
                     ]
                 ]);
@@ -60,7 +60,7 @@ class AiController extends Controller
             // 過濾掉重複與空白的關鍵字
             $keywords = array_unique(array_filter($keywords));
 
-            // 🔍 資料庫模糊比對（只查詢確實存在的 title, category, location 欄位，避免欄位不存在錯誤）
+            // 🔍 資料庫模糊比對（對現有的 title, category, location 欄位進行廣域搜尋）
             $matchedItems = Item::where(function ($query) use ($keywords, $userDescription) {
                 foreach ($keywords as $keyword) {
                     $cleanKeyword = trim($keyword);
