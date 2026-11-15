@@ -192,6 +192,11 @@ async function handleRegisterSubmit() {
 
 // 呼叫後端 AI 比對 API
 async function handleAiMatch() {
+  // 🛡️ 防呆：如果正在運算中，直接檔掉，防止重複點擊
+  if (isAiSearching.value) {
+    return
+  }
+
   if (!aiQuery.value.trim()) {
     showToast('請輸入描述', '請先輸入您遺失物品的特徵描述！')
     return
@@ -210,6 +215,10 @@ async function handleAiMatch() {
       body: JSON.stringify({ userDescription: aiQuery.value })
     })
 
+    if (!response.ok) {
+      throw new Error('伺服器回應逾時或異常')
+    }
+
     const data = await response.json()
 
     if (data.success) {
@@ -220,11 +229,13 @@ async function handleAiMatch() {
         showToast('比對完成', `AI 為您推薦了 ${data.matches.length} 筆可能的失物！`)
       }
     } else {
-      showToast('比對失敗', data.message || 'AI 分析過程發生錯誤。')
+      // 如果失敗，提示再試一次
+      showToast('比對失敗', '未能成功取得 AI 結果，請點擊按鈕再試一次！')
     }
   } catch (error) {
     console.error('AI 請求失敗：', error)
-    showToast('連線錯誤', '無法連線至 AI 比對服務，請確認後端與 Ollama 是否正在運行！')
+    // 💥 這裡會攔截到逾時（timeout）或連線中斷錯誤，明確提示請再試一次
+    showToast('連線逾時或失敗', 'AI 運算時間較長或連線中斷，請點擊「AI 開始比對」再試一次！')
   } finally {
     isAiSearching.value = false
   }
