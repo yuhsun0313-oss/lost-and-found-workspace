@@ -9,25 +9,19 @@ use App\Models\Item;
 class ItemController extends Controller
 {
     // 1. 取得所有失物清單
-    public function index()
-    {
-        try {
-            $items = Item::latest('id')->get();
+    ppublic function index()
+{
+    try {
+        $items = Item::latest('id')->get();
 
-            return response()->json([
-                'success' => true,
-                'data' => $items
-            ], 200);
+        // 直接回傳陣列，前端就不會報錯
+        return response()->json($items, 200);
 
-        } catch (\Exception $e) {
-            Log::error('載入失物清單失敗: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => '伺服器錯誤：' . $e->getMessage()
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        Log::error('載入失物清單失敗: ' . $e->getMessage());
+        return response()->json([], 500);
     }
+}
 
     // 2. 取得單一物品詳細資料（✨ 新增）
     public function show($id)
