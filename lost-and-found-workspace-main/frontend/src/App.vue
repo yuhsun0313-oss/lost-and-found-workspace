@@ -105,18 +105,27 @@ const registerEmail = ref('')
 const registerPassword = ref('')
 const registerPasswordConfirm = ref('')
 
+// 新增一個控制登入送出中的變數 (可以放在其他 ref 旁邊)
+const isLoggingIn = ref(false)
+
 async function handleLoginSubmit() {
+  // 🛡️ 防呆：如果正在登入請求中，直接擋掉，防止連點
+  if (isLoggingIn.value) {
+    return
+  }
+
   if (!loginEmail.value || !loginPassword.value) {
     showToast('欄位未填寫', '請輸入帳號與密碼！')
     return
   }
   if (!loginCaptchaInput.value || loginCaptchaInput.value.toUpperCase() !== loginCaptchaCode.value) {
     showToast('驗證錯誤', '驗證碼不正確！')
-    generateCaptcha() // 錯誤時自動更新驗證碼
+    generateCaptcha() 
     return
   }
 
   try {
+    isLoggingIn.value = true // 🔒 鎖定，禁止重複點擊
     const response = await fetch(`${API_BASE_URL}/login`, {
       method: 'POST',
       headers: {
@@ -143,6 +152,8 @@ async function handleLoginSubmit() {
   } catch (error) {
     console.error('連線錯誤:', error)
     showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  } finally {
+    isLoggingIn.value = false // 🔓 解除鎖定
   }
 }
 
