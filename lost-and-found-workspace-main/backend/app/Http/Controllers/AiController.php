@@ -10,9 +10,13 @@ use App\Models\Item;
 class AiController extends Controller
 {
     public function aiMatch(Request $request)
-    {   
-        $ollamaUrl = "https://tapping-carol-engaging.ngrok-free.dev/api/generate";
+    {
+        // 1. 動態讀取 Render 環境變數 OLLAMA_URL，並自動清除多餘斜線後接上 /api/generate
+        $baseUrl = rtrim(env('OLLAMA_URL', 'http://127.0.0.1:11434'), '/');
+        $ollamaUrl = $baseUrl . '/api/generate';
+
         $userDescription = trim($request->input('userDescription'));
+
         // 🛡️ 防呆機制：若輸入為空、字數過少或全為特殊符號，直接攔截回傳空陣列
         if (!$userDescription || mb_strlen($userDescription) < 2 || preg_match('/^[^\w\s]+$/u', $userDescription)) {
             return response()->json([
@@ -21,7 +25,7 @@ class AiController extends Controller
             ]);
         }
 
-        // 步驟 1：建構全能通用的語意擴充與同義詞提示詞 (Prompt)
+        // 步驟 1：建構語意擴充與同義詞提示詞 (Prompt)
         $prompt = "你是一個校園失物招領系統的智慧語意檢索與同義詞擴充專家。請分析使用者輸入的任意物品描述。
 
         【核心運作規則】：
@@ -37,14 +41,16 @@ class AiController extends Controller
 
             使用者輸入：{$userDescription}
             請嚴格回傳標準 JSON 格式物件（絕對不要有其他多餘文字）：";
+
         try {
-            $response = Http::timeout(60)
+            // 2. 將逾時時間拉長至 180 秒，並加上略過 ngrok 警告頁面標頭
+            $response = Http::timeout(180)
                 ->withHeaders([
-                    'ngrok-skip-browser-warning' => 'true', // 👈 這行會直接強制略過 ngrok 的阻擋畫面
+                    'ngrok-skip-browser-warning' => 'true',
                     'User-Agent' => 'Laravel-Client'
                 ])
                 ->post($ollamaUrl, [
-                    'model' => 'llama3:latest',
+                    'model' => env('OLLAMA_MODEL', 'llama3:latest'),
                     'prompt' => $prompt,
                     'stream' => false,
                     'format' => 'json',
@@ -63,8 +69,6 @@ class AiController extends Controller
             }
 
             // 💡 步驟 2：後端備用機制 (Fallback Mechanism)
-            // 如果 AI 的過濾過於保守導致回傳空陣列，但使用者確實輸入了合法的具體詞彙（如「保險套」），
-            // 系統自動啟動備用防呆，直接將使用者輸入納入查詢，確保 100% 不會被誤殺。
             if (empty($keywords) && mb_strlen($userDescription) >= 2) {
                 $stopwords = ['你好', '早安', '哈囉', 'hi', '嗨', '早'];
                 if (!in_array(mb_strtolower($userDescription), $stopwords)) {
@@ -76,7 +80,7 @@ class AiController extends Controller
                 return response()->json(['success' => true, 'matches' => []]);
             }
 
-            // 步驟 3：交由資料庫進行多條件模糊查詢 (Database Query)，確保精準且不漏接
+            // 步驟 3：交由資料庫進行多條件模糊查詢 (Database Query)
             $matchedItems = Item::where(function ($query) use ($keywords) {
                 foreach ($keywords as $keyword) {
                     $cleanKeyword = trim($keyword);
@@ -95,11 +99,11 @@ class AiController extends Controller
             ]);
 
         } catch (\Exception $e) {
-    Log::error('Ollama Error: ' . $e->getMessage()); // 記錄到日誌
-    return response()->json([
-        'success' => false,
-        'message' => 'Ollama 連線失敗詳情：' . $e->getMessage()
-    ], 500);
-}
+            Log::error('Ollama Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Ollama 連線失敗詳情：' . $e->getMessage()
+            ], 500);
+        }
     }
 }
