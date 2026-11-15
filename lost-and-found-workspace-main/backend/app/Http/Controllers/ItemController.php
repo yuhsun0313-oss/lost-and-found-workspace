@@ -4,17 +4,18 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\Item;
 
 class ItemController extends Controller
 {
-    // 1. 取得所有失物清單
-   public function index()
+    // 1. 取得所有失物清單（直接回傳陣列，徹底解決 frontend .forEach 崩潰）
+    public function index()
     {
         try {
-            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它，避免 500 錯誤
-            if (!\Illuminate\Support\Facades\Schema::hasTable('items')) {
-                \Illuminate\Support\Facades\Schema::create('items', function ($table) {
+            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它
+            if (!Schema::hasTable('items')) {
+                Schema::create('items', function ($table) {
                     $table->id();
                     $table->string('title');
                     $table->string('category');
@@ -24,24 +25,17 @@ class ItemController extends Controller
                 });
             }
 
-            $items = Item::latest('id')->get();
-
-            return response()->json([
-                'success' => true,
-                'data' => $items
-            ], 200);
+            // 直接回傳陣列本身，讓前端的 .forEach 可以直接讀取
+            return Item::latest('id')->get();
 
         } catch (\Exception $e) {
             Log::error('載入失物清單失敗: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => '伺服器錯誤：' . $e->getMessage()
-            ], 500);
+            // 發生例外時回傳空陣列，避免前端直接炸掉
+            return response()->json([], 500);
         }
     }
 
-    // 2. 取得單一物品詳細資料（✨ 新增）
+    // 2. 取得單一物品詳細資料
     public function show($id)
     {
         try {
@@ -103,7 +97,7 @@ class ItemController extends Controller
         }
     }
 
-    // 4. 編輯修改指定 ID 的物品資料（✨ 新增）
+    // 4. 編輯修改指定 ID 的物品資料
     public function update(Request $request, $id)
     {
         try {
@@ -116,7 +110,6 @@ class ItemController extends Controller
                 ], 404);
             }
 
-            // 驗證要更新的欄位（使用 sometimes 代表欄位非必填，有傳才改）
             $validated = $request->validate([
                 'title'       => 'sometimes|required|string|max:255',
                 'category'    => 'sometimes|required|string|max:100',
