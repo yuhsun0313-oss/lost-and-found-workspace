@@ -6,14 +6,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Item;
+use Carbon\Carbon;
 
 class ItemController extends Controller
 {
-    // 1. 取得所有失物清單（直接回傳陣列，徹底解決 frontend .forEach 崩潰）
+    // 1. 取得所有失物清單
     public function index()
     {
         try {
-            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它
+            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它（包含 date 欄位並允許 nullable）
             if (!Schema::hasTable('items')) {
                 Schema::create('items', function ($table) {
                     $table->id();
@@ -21,16 +22,15 @@ class ItemController extends Controller
                     $table->string('category');
                     $table->text('description')->nullable();
                     $table->string('location')->nullable();
+                    $table->date('date')->nullable(); // 設定為允許空值，避免再次發生 Not null violation
                     $table->timestamps();
                 });
             }
 
-            // 直接回傳陣列本身，讓前端的 .forEach 可以直接讀取
             return Item::latest('id')->get();
 
         } catch (\Exception $e) {
             Log::error('載入失物清單失敗: ' . $e->getMessage());
-            // 發生例外時回傳空陣列，避免前端直接炸掉
             return response()->json([], 500);
         }
     }
@@ -50,7 +50,7 @@ class ItemController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $item
+                    'data' => $item
             ], 200);
 
         } catch (\Exception $e) {
@@ -62,7 +62,7 @@ class ItemController extends Controller
         }
     }
 
-    // 3. 新增失物/招領資料
+    // 3. 新增失物/招領資料（自動補上 date 欄位，防止空值報錯）
     public function store(Request $request)
     {
         try {
@@ -71,7 +71,13 @@ class ItemController extends Controller
                 'category'    => 'required|string|max:100',
                 'description' => 'nullable|string',
                 'location'    => 'nullable|string|max:255',
+                'date'        => 'nullable|date',
             ]);
+
+            // 如果前端沒有傳送 date，自動帶入今天的日期
+            if (empty($validated['date'])) {
+                $validated['date'] = Carbon::now()->toDateString();
+            }
 
             $item = Item::create($validated);
 
@@ -115,6 +121,7 @@ class ItemController extends Controller
                 'category'    => 'sometimes|required|string|max:100',
                 'description' => 'nullable|string',
                 'location'    => 'nullable|string|max:255',
+                'date'        => 'nullable|date',
             ]);
 
             $item->update($validated);
