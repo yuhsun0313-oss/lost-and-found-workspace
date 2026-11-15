@@ -37,10 +37,13 @@ class AiController extends Controller
                 $ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
                 
                 try {
-                    $prompt = "你是一個失物招領 AI 聯想專家。使用者輸入了尋物描述：「{$userDescription}」。\n" .
-                        "請完全發揮你的語意聯想與推測能力，不管使用者輸入什麼口語、代名詞、地點或模糊形容，請自由聯想出所有可能相關的物品名稱、同義詞、品牌、類別或情境關鍵字（例如輸入手機要能聯想出 iPhone, Samsung, 行動電話 等）。\n" .
-                        "請列出 5 到 8 個相關關鍵字。\n" .
-                        "規則：絕對不要講任何廢話、不要解釋、不要舉例，只要輸出用半形逗號（,）分隔的關鍵字串即可。";
+                    $prompt = "你是一個貼心的校園失物招領 AI 幫手。使用者輸入了尋物描述：「{$userDescription}」。\n" .
+                        "請發揮你的智慧，幫忙分析並萃取出兩個關鍵資訊：\n" .
+                        "1. 遺失的【物品】名稱或相關同義詞、品牌（例如：手機、學生證、鑰匙、筆電、雨傘）。\n" .
+                        "2. 可能遺失的【地點】名稱（例如：圖書館、體育館、餐廳、201教室）。\n" .
+                        "規則：請務必以純 JSON 格式回覆，絕對不要包含任何 markdown 標記（如 ```json），格式必須嚴格對應：\n" .
+                        "{\"items\": [\"物品1\", \"物品2\"], \"locations\": [\"地點1\", \"地點2\"]}\n" .
+                        "絕對不要輸出額外的廢話、問候語或解釋，只要輸出最乾淨的 JSON 字串即可。";
 
                     $response = Http::timeout(20)->post("{$ollamaUrl}/api/generate", [
                         'model' => 'llama3:latest',
