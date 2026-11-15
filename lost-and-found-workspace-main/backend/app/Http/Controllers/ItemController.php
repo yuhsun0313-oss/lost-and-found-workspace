@@ -9,19 +9,37 @@ use App\Models\Item;
 class ItemController extends Controller
 {
     // 1. 取得所有失物清單
-    ppublic function index()
-{
-    try {
-        $items = Item::latest('id')->get();
+   public function index()
+    {
+        try {
+            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它，避免 500 錯誤
+            if (!\Illuminate\Support\Facades\Schema::hasTable('items')) {
+                \Illuminate\Support\Facades\Schema::create('items', function ($table) {
+                    $table->id();
+                    $table->string('title');
+                    $table->string('category');
+                    $table->text('description')->nullable();
+                    $table->string('location')->nullable();
+                    $table->timestamps();
+                });
+            }
 
-        // 直接回傳陣列，前端就不會報錯
-        return response()->json($items, 200);
+            $items = Item::latest('id')->get();
 
-    } catch (\Exception $e) {
-        Log::error('載入失物清單失敗: ' . $e->getMessage());
-        return response()->json([], 500);
+            return response()->json([
+                'success' => true,
+                'data' => $items
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('載入失物清單失敗: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => '伺服器錯誤：' . $e->getMessage()
+            ], 500);
+        }
     }
-}
 
     // 2. 取得單一物品詳細資料（✨ 新增）
     public function show($id)
