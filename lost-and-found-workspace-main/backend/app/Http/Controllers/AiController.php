@@ -11,7 +11,7 @@ class AiController extends Controller
 {
     public function aiMatch(Request $request)
     {   
-        $ollamaUrl = "https://tapping-carol-engaging.ngrok-free.dev /api/generate";
+        $ollamaUrl = "https://tapping-carol-engaging.ngrok-free.dev/api/generate";
         $userDescription = trim($request->input('userDescription'));
         // 🛡️ 防呆機制：若輸入為空、字數過少或全為特殊符號，直接攔截回傳空陣列
         if (!$userDescription || mb_strlen($userDescription) < 2 || preg_match('/^[^\w\s]+$/u', $userDescription)) {
