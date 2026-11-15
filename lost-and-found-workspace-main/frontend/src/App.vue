@@ -945,13 +945,15 @@ async function submitItem() {
             <p class="text-xs text-[#f87171] mt-1">(驗證碼不分大小寫)</p>
           </div>
 
+          <!-- 👇 請把原本的這顆按鈕換掉 -->
           <button
             type="button"
-            class="w-full rounded-xl py-2.5 text-xs font-bold transition mt-2 sm:py-3 sm:text-sm"
+            :disabled="isLoggingIn"
+            class="w-full rounded-xl py-2.5 text-xs font-bold transition mt-2 sm:py-3 sm:text-sm disabled:opacity-50"
             :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handleLoginSubmit"
           >
-            登入 (Login)
+            {{ isLoggingIn ? '登入中...' : '登入 (Login)' }}
           </button>
         </div>
 
