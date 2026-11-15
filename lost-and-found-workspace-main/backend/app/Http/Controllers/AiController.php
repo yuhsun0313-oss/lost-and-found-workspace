@@ -37,7 +37,7 @@ class AiController extends Controller
                     'prompt' => $prompt,
                     'stream' => false,
                     'options' => [
-                        'temperature' => 0.7, // 保持高度聯想彈性
+                        'temperature' => 0.7,
                         'num_predict' => 60
                     ]
                 ]);
@@ -45,10 +45,8 @@ class AiController extends Controller
                 if ($response->successful()) {
                     $aiText = trim($response->json('response', ''));
                     
-                    // 🧹 強力清洗 AI 回傳的雜訊（移除換行、引號、句號等）
+                    // 🧹 強力清洗 AI 回傳的雜訊
                     $cleanedText = str_replace(["\r", "\n", '"', "'", "。", "：", "、"], ["", "", "", "", ",", ",", ","], $aiText);
-                    
-                    // 拆解出陣列
                     $aiKeywords = array_map('trim', explode(',', $cleanedText));
                     
                     if (!empty($aiKeywords)) {
@@ -56,28 +54,25 @@ class AiController extends Controller
                     }
                 }
             } catch (\Exception $e) {
-                // 記錄例外但不中斷，確保能繼續往下用關鍵字查資料庫
                 Log::warning('Ollama 聯想過程發生例外: ' . $e->getMessage());
             }
 
             // 過濾掉重複與空白的關鍵字
             $keywords = array_unique(array_filter($keywords));
 
-            // 🔍 資料庫多欄位廣域模糊比對：確保只要有中任何一個關鍵字，所有符合的物品（不限數量）都會被完整撈出
+            // 🔍 資料庫模糊比對（只查詢確實存在的 title, category, location 欄位，避免欄位不存在錯誤）
             $matchedItems = Item::where(function ($query) use ($keywords, $userDescription) {
                 foreach ($keywords as $keyword) {
                     $cleanKeyword = trim($keyword);
                     if ($cleanKeyword !== '') {
                         $query->orWhere('title', 'LIKE', "%{$cleanKeyword}%")
                               ->orWhere('category', 'LIKE', "%{$cleanKeyword}%")
-                              ->orWhere('description', 'LIKE', "%{$cleanKeyword}%")
                               ->orWhere('location', 'LIKE', "%{$cleanKeyword}%");
                     }
                 }
                 
-                // 額外保險：將使用者的原始描述也拿去對各欄位做模糊比對
+                // 額外保險：將使用者的原始描述也拿去對現有欄位做模糊比對
                 $query->orWhere('title', 'LIKE', "%{$userDescription}%")
-                      ->orWhere('description', 'LIKE', "%{$userDescription}%")
                       ->orWhere('location', 'LIKE', "%{$userDescription}%");
             })
             ->latest('id')
