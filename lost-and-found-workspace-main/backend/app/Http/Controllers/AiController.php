@@ -9,7 +9,6 @@ use App\Models\Item;
 
 class AiController extends Controller
 {
-    // 將方法名稱從 match 改為 aiMatch，對應路由請求
     public function aiMatch(Request $request)
     {
         try {
@@ -27,36 +26,44 @@ class AiController extends Controller
             $ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
             
             try {
-                // 🧠 讓 Ollama 充分發揮語意聯想與推測能力的 Prompt
+                // 🧠 強大且發散的 Prompt，嚴格要求 Ollama 純輸出逗號分隔字串
                 $prompt = "你是一個頂級的失物招領 AI 聯想專家。使用者輸入了一段尋物描述：「{$userDescription}」。\n" .
-                    "即使使用者的描述非常模糊、口語（例如：掉了一個東西、軟軟的、那支、不知道在哪裡），你也必須發揮強大的語意聯想力，猜測使用者可能在找什麼物品、可能有哪些同義詞、或者可能是在描述哪種類型的東西。\n" .
-                    "請列出 5 到 8 個相關的物品名稱、同義詞、隱喻或可能的情境關鍵字。\n" .
-                    "規則：絕對不要講任何廢話、不要解釋、不要客套，只要輸出用半形逗號（,）分隔的關鍵字即可（例如：飛機杯,情趣用品,玩具,東西,物品）。";
+                    "請發揮強大的語意聯想力，猜測使用者可能在找什麼物品、可能有哪些同義詞、品牌、隱喻或可能的情境關鍵字。\n" .
+                    "請列出 5 到 8 個相關的關鍵字。\n" .
+                    "規則：絕對不要講任何廢話、不要解釋、不要編號、不要引號，只要輸出用半形逗號（,）分隔的關鍵字即可（例如：飛機杯,情趣用品,玩具,東西,物品）。";
 
                 $response = Http::timeout(10)->post("{$ollamaUrl}/api/generate", [
                     'model' => 'llama3:latest',
                     'prompt' => $prompt,
                     'stream' => false,
                     'options' => [
-                        'temperature' => 0.6,
+                        'temperature' => 0.7, // 保持高度聯想彈性
                         'num_predict' => 60
                     ]
                 ]);
 
                 if ($response->successful()) {
                     $aiText = trim($response->json('response', ''));
-                    // 清理並拆解 AI 產生的聯想關鍵字
-                    $aiKeywords = array_map('trim', explode(',', str_replace(['，', '\n', '：'], [',', '', ''], $aiText)));
-                    $keywords = array_merge($keywords, $aiKeywords);
+                    
+                    // 🧹 強力清洗 AI 回傳的雜訊（移除換行、引號、句號等）
+                    $cleanedText = str_replace(["\r", "\n", '"', "'", "。", "：", "、"], ["", "", "", "", ",", ",", ","], $aiText);
+                    
+                    // 拆解出陣列
+                    $aiKeywords = array_map('trim', explode(',', $cleanedText));
+                    
+                    if (!empty($aiKeywords)) {
+                        $keywords = array_merge($keywords, $aiKeywords);
+                    }
                 }
             } catch (\Exception $e) {
-                Log::warning('Ollama 聯想運算逾時，自動切換至純關鍵字搜尋: ' . $e->getMessage());
+                // 記錄例外但不中斷，確保能繼續往下用關鍵字查資料庫
+                Log::warning('Ollama 聯想過程發生例外: ' . $e->getMessage());
             }
 
             // 過濾掉重複與空白的關鍵字
             $keywords = array_unique(array_filter($keywords));
 
-            // 🔍 資料庫多欄位廣域模糊比對：只要有命中任一關鍵字就會被篩選出來
+            // 🔍 資料庫多欄位廣域模糊比對：確保只要有中任何一個關鍵字，所有符合的物品（不限數量）都會被完整撈出
             $matchedItems = Item::where(function ($query) use ($keywords, $userDescription) {
                 foreach ($keywords as $keyword) {
                     $cleanKeyword = trim($keyword);
@@ -68,9 +75,10 @@ class AiController extends Controller
                     }
                 }
                 
-                // 額外保險：將使用者的原始描述也拿去對地點或描述做一次比對
-                $query->orWhere('location', 'LIKE', "%{$userDescription}%")
-                      ->orWhere('description', 'LIKE', "%{$userDescription}%");
+                // 額外保險：將使用者的原始描述也拿去對各欄位做模糊比對
+                $query->orWhere('title', 'LIKE', "%{$userDescription}%")
+                      ->orWhere('description', 'LIKE', "%{$userDescription}%")
+                      ->orWhere('location', 'LIKE', "%{$userDescription}%");
             })
             ->latest('id')
             ->get();
@@ -81,10 +89,10 @@ class AiController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
-            Log::error('AI 智慧聯想失敗: ' . $e->getMessage());
+            Log::error('AI 比對發生嚴重錯誤: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'AI 比對發生錯誤',
+                'message' => '伺服器發生錯誤：' . $e->getMessage(),
                 'matches' => []
             ], 500);
         }
