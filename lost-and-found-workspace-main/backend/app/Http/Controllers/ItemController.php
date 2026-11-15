@@ -10,11 +10,10 @@ use Carbon\Carbon;
 
 class ItemController extends Controller
 {
-    // 1. 取得所有失物清單
+    // ✨ 新版 index：具備 Schema 自動建表，並將 date 與 type 設為 nullable
     public function index()
     {
         try {
-            // 🛡️ 自動檢查：如果 items 這張表不存在，就自動建立它（包含 date 欄位並允許 nullable）
             if (!Schema::hasTable('items')) {
                 Schema::create('items', function ($table) {
                     $table->id();
@@ -22,11 +21,13 @@ class ItemController extends Controller
                     $table->string('category');
                     $table->text('description')->nullable();
                     $table->string('location')->nullable();
-                    $table->date('date')->nullable(); // 設定為允許空值，避免再次發生 Not null violation
+                    $table->date('date')->nullable();     // 確保允許空值
+                    $table->string('type')->nullable();     // 確保允許空值
                     $table->timestamps();
                 });
             }
 
+            // 直接回傳陣列供前端 .forEach 使用
             return Item::latest('id')->get();
 
         } catch (\Exception $e) {
@@ -35,34 +36,7 @@ class ItemController extends Controller
         }
     }
 
-    // 2. 取得單一物品詳細資料
-    public function show($id)
-    {
-        try {
-            $item = Item::find($id);
-
-            if (!$item) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '找不到該筆物品資料'
-                ], 404);
-            }
-
-            return response()->json([
-                'success' => true,
-                    'data' => $item
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error('取得單一物品失敗: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => '伺服器錯誤：' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    // 3. 新增失物/招領資料（自動補上 date 欄位，防止空值報錯）
+    // ✨ 新版 store：加入 date、type 自動補值，並限制 image 只能是圖片格式
     public function store(Request $request)
     {
         try {
@@ -72,11 +46,18 @@ class ItemController extends Controller
                 'description' => 'nullable|string',
                 'location'    => 'nullable|string|max:255',
                 'date'        => 'nullable|date',
+                'type'        => 'nullable|string|max:50',
+                'image'       => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048', // 🖼️ 限制只能上傳圖片
             ]);
 
-            // 如果前端沒有傳送 date，自動帶入今天的日期
+            // 如果前端沒傳 date，自動補上今天日期
             if (empty($validated['date'])) {
                 $validated['date'] = Carbon::now()->toDateString();
+            }
+
+            // 如果前端沒傳 type，自動補上預設值
+            if (empty($validated['type'])) {
+                $validated['type'] = 'lost';
             }
 
             $item = Item::create($validated);
@@ -90,7 +71,60 @@ class ItemController extends Controller
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => '資料驗證失敗',
+                'message' => '只能上傳圖片檔案（支援 jpg, png, webp）',
+                'errors'  => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('新增物品失敗: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => '伺服器錯誤：' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // 3. 新增失物/招領資料（自動補上 date 與 type 欄位，防止空值報錯）
+    public function store(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'title'       => 'required|string|max:255',
+                'category'    => 'required|string|max:100',
+                'description' => 'nullable|string',
+                'location'    => 'nullable|string|max:255',
+                'date'        => 'nullable|date',
+                'type'        => 'nullable|string|max:50',
+                // 🖼️ 新增：限制 image 欄位必須是圖片，且格式限定 jpg, jpeg, png, webp，大小限制 2MB 內
+                'image'       => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            ]);
+
+            // 如果有上傳圖片，進行儲存處理
+            if ($request->hasFile('image')) {
+                $path = $request->file('image')->store('items', 'public');
+                $validated['image_path'] = $path; // 假設你的資料庫欄位叫 image_path
+            }
+
+            if (empty($validated['date'])) {
+                $validated['date'] = Carbon::now()->toDateString();
+            }
+
+            if (empty($validated['type'])) {
+                $validated['type'] = 'lost';
+            }
+
+            $item = Item::create($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => '物品新增成功（含圖片）',
+                'data'    => $item
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => '只能上傳圖片檔案（支援 jpg, png, webp）',
                 'errors'  => $e->errors()
             ], 422);
 
@@ -122,6 +156,7 @@ class ItemController extends Controller
                 'description' => 'nullable|string',
                 'location'    => 'nullable|string|max:255',
                 'date'        => 'nullable|date',
+                'type'        => 'nullable|string|max:50',
             ]);
 
             $item->update($validated);

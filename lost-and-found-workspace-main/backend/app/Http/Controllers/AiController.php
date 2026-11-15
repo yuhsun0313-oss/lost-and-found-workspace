@@ -103,7 +103,7 @@ class AiController extends Controller
             $ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
             
             try {
-                // 💡 升級版 Prompt：讓 Ollama 也能聰明辨識使用者口語中的物品與地點情境
+                // ✨ 升級版 Prompt：讓 Ollama 也能聰明辨識使用者口語中的物品與地點情境
                 $prompt = "你是一個失物招領 AI 助理。請針對使用者描述「{$userDescription}」，萃取出 3 到 5 個相關的物品關鍵字、廠牌、同義詞或地點（例如籃球場、圖書館等）。規則：絕對不要講任何廢話，只要輸出用半形逗號分隔的關鍵字即可（例如：手機,iPhone,籃球場）。";
 
                 $response = Http::timeout(8)->post("{$ollamaUrl}/api/generate", [
@@ -144,14 +144,14 @@ class AiController extends Controller
 
             $keywords = array_unique(array_filter($keywords));
 
-            // 資料庫查詢：同時比對標題、分類與地點欄位
+            // ✨ 資料庫查詢：同時比對標題、分類與地點欄位 (location)
             $matchedItems = Item::where(function ($query) use ($keywords, $userDescription, $detectedLocation) {
                 foreach ($keywords as $keyword) {
                     $cleanKeyword = trim($keyword);
                     if ($cleanKeyword !== '') {
                         $query->orWhere('title', 'LIKE', "%{$cleanKeyword}%")
                               ->orWhere('category', 'LIKE', "%{$cleanKeyword}%")
-                              ->orWhere('location', 'LIKE', "%{$cleanKeyword}%"); // ✨ 支援地點欄位模糊比對
+                              ->orWhere('location', 'LIKE', "%{$cleanKeyword}%"); // 支援地點欄位模糊比對
                     }
                 }
 
@@ -162,6 +162,7 @@ class AiController extends Controller
             })
             ->latest('id')
             ->get();
+
 
             return response()->json([
                 'success' => true,
