@@ -80,13 +80,31 @@ class AiController extends Controller
                 '飾品'   => ['項鍊', '手鍊', '戒指', '耳環', '手環', '髮圈', '髮夾', '飾品盒'],
             ];
 
+            // 🏫 校園常見地點關鍵字清單（若使用者只提地點或時間，能自動捕捉並擴充搜尋）
+            $locationKeywords = [
+                '籃球場', '操場', '體育館', '圖書館', '教學樓', '行政大樓', 
+                '宿舍', '男宿', '女宿', '餐廳', '學餐', '合作社', '教室', 
+                '停車場', '大門', '中庭', '校園', '哪裡', '那邊', '這附近'
+            ];
+
             $keywords = [$userDescription];
             $ollamaSuccess = false;
+            $detectedLocation = '';
+
+            // 預先檢測是否有包含常見地點，方便後續對 location 欄位進行模糊搜尋
+            foreach ($locationKeywords as $loc) {
+                if (mb_stripos($userDescription, $loc) !== false) {
+                    $detectedLocation = $loc;
+                    $keywords[] = $loc;
+                    break;
+                }
+            }
 
             $ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
             
             try {
-                $prompt = "你是一個失物招領 AI 助理。請針對使用者描述「{$userDescription}」，萃取出 3 到 5 個相關的物品關鍵字、廠牌或同義詞。規則：絕對不要講任何廢話，只要輸出用半形逗號分隔的關鍵字即可（例如：手機,iPhone,智慧型手機）。";
+                // 💡 升級版 Prompt：讓 Ollama 也能聰明辨識使用者口語中的物品與地點情境
+                $prompt = "你是一個失物招領 AI 助理。請針對使用者描述「{$userDescription}」，萃取出 3 到 5 個相關的物品關鍵字、廠牌、同義詞或地點（例如籃球場、圖書館等）。規則：絕對不要講任何廢話，只要輸出用半形逗號分隔的關鍵字即可（例如：手機,iPhone,籃球場）。";
 
                 $response = Http::timeout(8)->post("{$ollamaUrl}/api/generate", [
                     'model' => 'llama3:latest',
@@ -108,6 +126,7 @@ class AiController extends Controller
                 Log::warning('Ollama 運算逾時，準備啟動 $synonymsMap 安全網備援: ' . $e->getMessage());
             }
 
+            // 如果 Ollama 沒有成功回應，啟動安全網同義詞比對
             if (!$ollamaSuccess) {
                 foreach ($synonymsMap as $key => $synonyms) {
                     if (mb_stripos($userDescription, $key) !== false || $userDescription === $key) {
@@ -125,13 +144,20 @@ class AiController extends Controller
 
             $keywords = array_unique(array_filter($keywords));
 
-            $matchedItems = Item::where(function ($query) use ($keywords) {
+            // 資料庫查詢：同時比對標題、分類與地點欄位
+            $matchedItems = Item::where(function ($query) use ($keywords, $userDescription, $detectedLocation) {
                 foreach ($keywords as $keyword) {
                     $cleanKeyword = trim($keyword);
                     if ($cleanKeyword !== '') {
                         $query->orWhere('title', 'LIKE', "%{$cleanKeyword}%")
-                              ->orWhere('category', 'LIKE', "%{$cleanKeyword}%");
+                              ->orWhere('category', 'LIKE', "%{$cleanKeyword}%")
+                              ->orWhere('location', 'LIKE', "%{$cleanKeyword}%"); // ✨ 支援地點欄位模糊比對
                     }
+                }
+
+                // 如果有抓到特定地點，額外用整句描述在 location 尋找一次
+                if ($detectedLocation !== '') {
+                    $query->orWhere('location', 'LIKE', "%{$userDescription}%");
                 }
             })
             ->latest('id')
@@ -144,7 +170,6 @@ class AiController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Search Error: ' . $e->getMessage());
-            // 已修正這裡原本拼錯的 respoe 為 response
             return response()->json([
                 'success' => false,
                 'message' => '查詢失敗詳情：' . $e->getMessage()
