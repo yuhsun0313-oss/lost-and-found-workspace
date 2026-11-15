@@ -13,7 +13,6 @@ class AiController extends Controller
     public function aiMatch(Request $request)
     {
         try {
-            // 修正 1：補齊完整的 $userDescription 接收語法
             $userDescription = trim($request->input('userDescription', ''));
 
             if (empty($userDescription)) {
@@ -23,116 +22,127 @@ class AiController extends Controller
                 ], 200);
             }
 
-            // 1. 基礎文字拆解（過濾干擾字）
-            $stopWords = ['我', '你', '他', '的', '了', '在', '個', '件', '支', '張', '本', '昨天', '今天', '明天', '不見', '遺失', '掉', '找', '尋', '求助', '東西', '物品', '找不到'];
-            $words = preg_split('/[\s,\p{P}]+/u', $userDescription, -1, PREG_SPLIT_NO_EMPTY);
+            // 1. 基礎文字拆解（僅過濾無意義的助詞與干擾字，保留核心字詞作為防護底線）
+            $stopWords = ['我', '你', '他', '的', '了', '在', '個', '件', '支', '張', '本', '昨天', '今天', '明天', '不見', '遺失', '掉', '找', '尋', '求助', '東西', '物品', '找不到', '看到', '最後'];
+            $words = preg_split('/[\s,\p{P}]+/u',$userDescription, -1, PREG_SPLIT_NO_EMPTY);
             
             $filteredWords = array_filter($words, function ($word) use ($stopWords) {
-                return mb_strlen($word) > 1 && !in_array($word, $stopWords);
+                return mb_strlen($word) > 1 && !in_array($word,$stopWords);
             });
 
-            // 2. 透過 AI 進行生活化、地點大於物品的智慧解析
-            $cacheKey = 'ai_match_v2_' . md5($userDescription);
+            // 2. 🧠 完全交由 Ollama 進行「任意物品與情境」的動態聯想與結構化解析
+            $cacheKey = 'ai_dynamic_match_' . md5($userDescription);
             $aiData = Cache::get($cacheKey, []);
 
-            if (empty($aiData)) {
-                // 修正 2：還原乾淨的預設網址字串
-                $ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
+            if (empty($aiData)) {$ollamaUrl = env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev');
                 
                 try {
-                    // 專題展示專用：生活化且嚴格分離「地點」與「物品」
-                    $prompt = "你是一個貼心的校園失物招領 AI 幫手。使用者輸入了尋物描述：「{$userDescription}」。\n" .
-                        "請分析並分離出兩個關鍵資訊：\n" .
-                        "1. 遺失的【物品】名稱或相關同義詞、品牌（例如：手機、學生證、鑰匙、雨傘、水壺）。\n" .
-                        "2. 可能遺失的【地點】名稱（例如：圖書館、體育館、餐廳、201教室、廁所）。\n" .
+                    // 🎯 核心 Prompt：不寫死任何物品類別，完全讓 LLM 自主發揮同義詞聯想與地點萃取
+                    $prompt = "你是一個頂級的失物招領 AI 聯想專家。使用者輸入了任意尋物描述或情境：「{$userDescription}」。\n" .
+                        "請發揮強大的語意聯想與推理能力，分析並分離出兩個部分：\n" .
+                        "1. items：使用者可能在找的【所有相關物品名稱、同義詞、品牌、泛稱或替代詞】（請盡量多聯想幾種可能代表該物品的詞彙）。\n" .
+                        "2. locations：使用者提到的【可能遺失的地點】（若沒提到則回傳空陣列）。\n" .
                         "規則：請務必以純 JSON 格式回覆，絕對不要包含任何 markdown 標記（如 ```json），格式必須嚴格對應：\n" .
-                        "{\"items\": [\"物品1\"], \"locations\": [\"地點1\"]}\n" .
-                        "絕對不要輸出額外的廢話或解釋。";
+                        "{\"items\": [\"物品原名\", \"同義詞1\", \"同義詞2\"], \"locations\": [\"地點1\"]}\n" .
+                        "絕對不要輸出額外的廢話、問候語或解釋。";
 
-                    $response = Http::timeout(20)->post("{$ollamaUrl}/api/generate", [
+                    $response = Http::timeout(25)->post("{$ollamaUrl}/api/generate", [
                         'model' => 'llama3:latest',
                         'prompt' => $prompt,
                         'stream' => false,
                         'options' => [
-                            'temperature' => 0.1,
-                            'num_predict' => 80
+                            'temperature' => 0.7, // 提高靈敏度，讓 Ollama 對任何奇特輸入都能自由發散聯想
+                            'num_predict' => 120
                         ]
                     ]);
 
                     if ($response->successful()) {
                         $rawText = trim($response->json('response', ''));
                         
-                        // 清理可能包在 markdown 裡的 json 標籤
+                        // 🧹 強力清理可能包在 markdown 裡的 json 標籤
                         $cleanJson = str_replace(['```json', '```', '`'], '', $rawText);
                         $firstBrace = strpos($cleanJson, '{');
                         $lastBrace = strrpos($cleanJson, '}');
                         
-                        if ($firstBrace !== false && $lastBrace !== false) {$jsonString = substr($cleanJson,$firstBrace, $lastBrace -$firstBrace + 1);
+                        if ($firstBrace !== false && $lastBrace !== false) {
+                            $jsonString = substr($cleanJson, $firstBrace, $lastBrace - $firstBrace + 1);
                             $decoded = json_decode($jsonString, true);
                             
                             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                                $aiData =$decoded;
-                                // 只有成功抓到東西才寫入快取
-                                if (!empty($aiData['items']) \vert{}\vert{} !empty($aiData['locations'])) {
-                                    Cache::put($cacheKey, $aiData, 600); } } } } } catch (\Exception$e) {
-                    Log::warning('AI 結構化解析發生例外: ' . $e->getMessage());
+                                $aiData = $decoded;
+                                // 確保有確實抓到內容才寫入快取
+                                if (!empty($aiData['items']) || !empty($aiData['locations'])) {
+                                    Cache::put($cacheKey, $aiData, 600);
+                                }
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('AI 動態聯想解析逾時或例外: ' . $e->getMessage());
                 }
             }
 
-            // 萃取 AI 辨識出的物品與地點（若 AI 沒抓到，退回過濾後的關鍵字）
-            $targetItems = !empty($aiData['items']) ? $aiData['items'] : array_values($filteredWords);
-            $targetLocations =$aiData['locations'] ?? [];
+            // 整合 AI 動態聯想出的物品與使用者的原始過濾詞
+            $targetItems = !empty($aiData['items']) ? array_merge($aiData['items'], array_values($filteredWords)) : array_values($filteredWords);
+            $targetItems[] = $userDescription; // 把原句也放入保底
+            $targetItems = array_unique(array_filter($targetItems));
 
-            // 3. 執行「地點大於物品」的智慧加權資料庫搜尋
-            $matchedItems = Item::where(function ($query) use ($targetItems, $targetLocations,$userDescription) {
+            $targetLocations = $aiData['locations'] ?? [];
+
+            // 3. 🔍 執行「地點大於物品」的智慧加權資料庫搜尋
+            $matchedItems = Item::where(function ($query) use ($targetItems, $targetLocations, $userDescription) {
                 
-                // 優先策略：如果 AI 成功辨識出「地點」，強制地點必須命中，同時結合物品比對
-                if (!empty($targetLocations)) {$query->where(function ($subQuery) use ($targetLocations) {
-                        foreach ($targetLocations as$loc) {
+                // 優先策略：如果 AI 成功辨識出「地點」，地點必須命中，同時結合 AI 聯想出的所有同義詞進行比對
+                if (!empty($targetLocations)) {
+                    $query->where(function ($subQuery) use ($targetLocations) {
+                        foreach ($targetLocations as $loc) {
                             if (mb_strlen(trim($loc)) > 1) {
-                                $subQuery->orWhere('location', 'ILIKE', "\%{$loc}%");
+                                $subQuery->orWhere('location', 'ILIKE', "%{$loc}%");
                             }
                         }
                     });
 
-                    if (!empty($targetItems)) {$query->where(function ($itemQuery) use ($targetItems) {
-                            foreach ($targetItems as$itm) {
+                    if (!empty($targetItems)) {
+                        $query->where(function ($itemQuery) use ($targetItems) {
+                            foreach ($targetItems as $itm) {
                                 if (mb_strlen(trim($itm)) > 1) {
-                                    $itemQuery->orWhere('title', 'ILIKE', "\%{$itm}%")
+                                    $itemQuery->orWhere('title', 'ILIKE', "%{$itm}%")
                                               ->orWhere('category', 'ILIKE', "%{$itm}%");
                                 }
                             }
                         });
                     }
                 } else {
-                    // 備援策略：沒抓到地點時，用物品名稱進行精準比對
-                    foreach ($targetItems as$itm) {
+                    // 備援策略：沒抓到地點時，用 AI 動態聯想出的所有同義詞與原句進行廣域比對
+                    foreach ($targetItems as $itm) {
                         if (mb_strlen(trim($itm)) > 1) {
-                            $query->orWhere('title', 'ILIKE', "\%{$itm}%")
+                            $query->orWhere('title', 'ILIKE', "%{$itm}%")
                                   ->orWhere('category', 'ILIKE', "%{$itm}%");
                         }
                     }
-                    $query->orWhere('title', 'ILIKE', "\%{$userDescription}%")
+                    $query->orWhere('title', 'ILIKE', "%{$userDescription}%")
                           ->orWhere('location', 'ILIKE', "%{$userDescription}%");
                 }
             })
             ->latest('id')
             ->get();
 
-            // 安全防護網：如果「地點 + 物品」的嚴格交集找不到（例如失主記錯地點），自動放寬為只找該物品，避免畫面空白
-            if ($matchedItems->isEmpty() && !empty($targetItems)) {$matchedItems = Item::where(function ($query) use ($targetItems) {
-                    foreach ($targetItems as$itm) {
+            // 🌟 最終 Demo 保險：如果嚴格交集找不到，自動放寬為純 AI 同義詞搜尋，保證絕對不會開天窗！
+            if ($matchedItems->isEmpty() && !empty($targetItems)) {
+                $matchedItems = Item::where(function ($query) use ($targetItems, $userDescription) {
+                    foreach ($targetItems as $itm) {
                         if (mb_strlen(trim($itm)) > 1) {
-                            $query->orWhere('title', 'ILIKE', "\%{$itm}%")
-                                  ->orWhere('category', 'ILIKE', "%{$itm}%");
+                            $query->orWhere('title', 'ILIKE', "%{$itm}%")
+                                  ->orWhere('category', 'ILIKE', "%{$itm}%")
+                                  ->orWhere('location', 'ILIKE', "%{$itm}%");
                         }
                     }
+                    $query->orWhere('title', 'ILIKE', "%{$userDescription}%");
                 })
                 ->latest('id')
                 ->get();
             }
 
-            // 修正 3：移除 'success`' 裡面多餘的反引號
             return response()->json([
                 'success' => true,
                 'matches' => $matchedItems
