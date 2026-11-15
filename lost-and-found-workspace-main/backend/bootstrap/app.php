@@ -4,7 +4,6 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Throwable;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,8 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        // 🛡️ 強制攔截所有 API 錯誤，並加上 CORS 標頭，避免前端被 CORS 擋住而看不到真實 500 錯誤
-        $exceptions->render(function (Throwable $e, Request $request) {
+        // 🛡️ 使用 \Throwable 避免非複合名稱錯誤，並強制加上 CORS 標頭與錯誤細節
+        $exceptions->render(function (\Throwable $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
                     'success' => false,
