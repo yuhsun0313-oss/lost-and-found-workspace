@@ -5,9 +5,9 @@ const router = express.Router();
 router.post('/api/ai-match', async (req, res) => {
   try {
     const { userDescription } = req.body;
-    
+
     // 1. 從資料庫取得目前的失物清單
-    const items = await db.query('SELECT * FROM items'); 
+    const items = await db.query('SELECT * FROM items');
 
     // 2. 組合 Prompt 傳給 Ollama
     const prompt = `
@@ -17,9 +17,14 @@ router.post('/api/ai-match', async (req, res) => {
     `;
 
     // 3. 呼叫本機 Ollama API
-    const ollamaRes = await fetch('http://localhost:11434/api/generate', {
+    const ollamaUrl = 'https://tapping-carol-engaging.ngrok-free.dev'; // 視需要改為環境變數或你的最新 ngrok 網址
+
+    const ollamaRes = await fetch(`${ollamaUrl}/api/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
       body: JSON.stringify({
         model: 'llama3',
         prompt: prompt,
@@ -27,7 +32,6 @@ router.post('/api/ai-match', async (req, res) => {
         format: 'json'
       })
     });
-
     const aiData = await ollamaRes.json();
     const matchedIds = JSON.parse(aiData.response);
 
