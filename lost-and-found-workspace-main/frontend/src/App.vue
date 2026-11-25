@@ -419,7 +419,7 @@ async function submitItem() {
     <header class="sticky top-0 z-40 transition-colors duration-300" :class="isDarkMode ? 'bg-[#121212]' : 'bg-white shadow-sm'">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <a href="/" class="text-lg font-black sm:text-xl flex items-center gap-1 tracking-wider" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
-          ◈ 尋物雷達
+          ◈ 校園失物AI尋物通
         </a>
         
         <!-- 獨立按鈕區塊 -->
