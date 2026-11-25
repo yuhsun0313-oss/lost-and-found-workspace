@@ -45,13 +45,15 @@ class AiController extends Controller
                         "規則：請務必以純 JSON 格式回覆，絕對不要包含 markdown 標記（如 ```json）或任何廢話，格式如下：\n" .
                         "{\"exact_items\": [\"原名\"], \"synonyms\": [\"同義詞1\", \"同義詞2\"], \"locations\": [\"地點1\"]}";
 
-                    $response = Http::timeout(25)->post("{$ollamaUrl}/api/generate", [
+                    $response = Http::withHeaders([
+                        'ngrok-skip-browser-warning' => 'true',
+                    ])->timeout(25)->post("{$ollamaUrl}/api/generate", [
                         'model' => 'llama3:latest',
                         'prompt' => $prompt,
                         'stream' => false,
                         'options' => [
-                            'temperature' => 0.6,
-                            'num_predict' => 150
+                        'temperature' => 0.6,
+                        'num_predict' => 150
                         ]
                     ]);
 
