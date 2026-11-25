@@ -6,13 +6,32 @@ use Illuminate\Database\Eloquent\Model;
 
 class Item extends Model
 {
-    // 💡 加上這行，允許以下欄位進行寫入
     protected $fillable = [
         'title',
         'category',
+        'description',
         'location',
         'date',
         'type',
         'image',
+        'claimant_email',
+        'vlm_fail_count',
+        'review_status',
+        'manual_review_deadline',
+        'claim_proof_image',
+        'vlm_last_reason',
     ];
+
+    protected $attributes = [
+        'vlm_fail_count' => 0,
+        'review_status' => 'pending',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'vlm_fail_count' => 'integer',
+            'manual_review_deadline' => 'datetime',
+        ];
+    }
 }

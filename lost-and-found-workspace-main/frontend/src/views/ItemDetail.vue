@@ -1,83 +1,153 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppState } from '../composables/useAppState'
+import ClaimVerifyModal from '../components/ClaimVerifyModal.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { API_BASE_URL, isDarkMode, formatRemainingTime } = useAppState()
 
-// 取得網址上的 id（例如 /item/1 的 1）
 const itemId = route.params.id
+const item = ref(null)
+const isLoading = ref(true)
+const showVerifyModal = ref(false)
 
-// 這裡我們暫時用模擬的資料（之後會教你怎麼跟首頁共享狀態或從後端撈）
-const item = ref({
-  id: Number(itemId),
-  title: '白色無線耳機盒',
-  category: '電子產品',
-  location: '電腦教室',
-  date: '2026-10-10',
-  type: 'found',
-  image: 'https://images.unsplash.com/photo-1606220945770-b5b6c2c55bf1?w=600',
+const toast = reactive({
+  show: false,
+  title: '',
+  message: '',
 })
 
-// 確認刪除的函式
-function deleteItem() {
-  const confirmed = confirm('確定要刪除這筆失物紀錄嗎？')
-  if (confirmed) {
-    alert('已成功刪除！返回首頁')
-    // 刪除後導回首頁
-    router.push('/')
+function showToast(title, message) {
+  toast.title = title
+  toast.message = message
+  toast.show = true
+}
+
+async function fetchItem() {
+  try {
+    isLoading.value = true
+    const response = await fetch(`${API_BASE_URL}/items/${itemId}`, {
+      headers: { Accept: 'application/json' },
+    })
+    const data = await response.json()
+    if (response.ok && data.success) {
+      item.value = data.data
+    }
+  } catch (error) {
+    console.error('載入物品明細失敗：', error)
+  } finally {
+    isLoading.value = false
   }
+}
+
+onMounted(() => {
+  fetchItem()
+})
+
+function handleVerified() {
+  setTimeout(() => {
+    router.push('/')
+  }, 1500)
 }
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 py-10 px-5 text-slate-800">
-    <div class="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <!-- 返回按鈕 -->
+  <div
+    class="min-h-screen py-10 px-5 transition-colors duration-300"
+    :class="isDarkMode ? 'bg-[#000000] text-[#ffffff]' : 'bg-[#f8fafc] text-[#0f172a]'"
+  >
+    <div
+      class="mx-auto max-w-xl rounded-2xl p-6 transition-colors duration-300"
+      :class="isDarkMode ? 'bg-[#121212] text-[#ffffff]' : 'bg-white border border-slate-200 shadow-sm'"
+    >
       <button
-        class="mb-4 text-sm font-bold text-indigo-600 hover:underline"
+        type="button"
+        class="mb-4 text-sm font-bold hover:underline"
+        :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'"
         @click="router.push('/')"
       >
         ← 返回首頁
       </button>
 
-      <!-- 物品圖片 -->
-      <div class="relative h-64 overflow-hidden rounded-xl bg-slate-100">
-        <img
-          v-if="item.image"
-          :src="item.image"
-          :alt="item.title"
-          class="h-full w-full object-cover"
-        />
-        <div v-else class="flex h-full items-center justify-center text-slate-400">
-          尚無物品照片
-        </div>
-        <span
-          class="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold"
-          :class="item.type === 'found' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
-        >
-          {{ item.type === 'found' ? '已拾獲' : '正在尋找' }}
-        </span>
-      </div>
+      <div v-if="isLoading" class="py-12 text-center text-sm opacity-70">載入失物明細中...</div>
 
-      <!-- 物品詳細資訊 -->
-      <div class="mt-6">
-        <span class="text-xs font-semibold text-indigo-600">{{ item.category }}</span>
-        <h1 class="mt-1 text-2xl font-black">{{ item.title }}</h1>
+      <div v-else-if="!item" class="py-12 text-center text-sm opacity-70">找不到該筆失物紀錄。</div>
 
-        <div class="mt-4 space-y-2 text-sm text-slate-600 border-t border-slate-100 pt-4">
-          <p>📍 發現地點：{{ item.location }}</p>
-          <p>📅 刊登日期：{{ item.date }}</p>
-          <p>🆔 物品代號：#{{ item.id }}</p>
+      <template v-else>
+        <div class="relative h-64 overflow-hidden rounded-xl" :class="isDarkMode ? 'bg-[#000000]' : 'bg-slate-100'">
+          <img v-if="item.image" :src="item.image" :alt="item.title" class="h-full w-full object-cover" />
+          <div v-else class="flex h-full items-center justify-center text-slate-400">尚無物品照片</div>
+          <span
+            class="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold"
+            :class="item.type === 'found' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+          >
+            {{ item.type === 'found' ? '已拾獲' : '正在尋找' }}
+          </span>
         </div>
 
-        <!-- 刪除按鈕 -->
+        <div class="mt-6">
+          <span class="text-xs font-semibold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">{{ item.category }}</span>
+          <h1 class="mt-1 text-2xl font-black">{{ item.title }}</h1>
+
+          <div
+            class="mt-4 space-y-2 text-sm border-t pt-4"
+            :class="isDarkMode ? 'text-[#cccccc] border-[#222222]' : 'text-slate-600 border-slate-100'"
+          >
+            <p>📍 發現地點：{{ item.location }}</p>
+            <p>📅 刊登日期：{{ item.date }}</p>
+            <p>🆔 物品代號：#{{ item.id }}</p>
+          </div>
+
+          <div
+            v-if="item.review_status === 'needs_manual_review'"
+            class="mt-4 rounded-xl p-3 text-xs bg-amber-500/15 border border-amber-500/40"
+            :class="isDarkMode ? 'text-amber-300' : 'text-amber-800'"
+          >
+            ⏳ 目前正由管理員「人工辨識」審核中（{{ formatRemainingTime(item.manual_review_deadline) }}）。
+          </div>
+
+          <button
+            type="button"
+            :disabled="item.review_status === 'needs_manual_review' || item.review_status === 'completed'"
+            class="mt-8 w-full rounded-xl py-3 text-sm font-bold transition disabled:opacity-50"
+            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
+            @click="showVerifyModal = true"
+          >
+            {{ item.review_status === 'needs_manual_review' ? '人工辨識審核中' : '已找到，驗證並刪除' }}
+          </button>
+        </div>
+      </template>
+    </div>
+
+    <ClaimVerifyModal
+      :show="showVerifyModal"
+      :item="item"
+      @close="showVerifyModal = false"
+      @verified="handleVerified"
+      @escalated="fetchItem"
+      @toast="showToast"
+    />
+
+    <div
+      v-if="toast.show"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      @click.self="toast.show = false"
+    >
+      <div
+        class="w-full max-w-sm rounded-2xl p-6 text-center"
+        :class="isDarkMode ? 'bg-[#121212] text-[#ffffff]' : 'bg-white text-[#0f172a] shadow-2xl'"
+      >
+        <h3 class="text-lg font-black mb-2" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">{{ toast.title }}</h3>
+        <p class="text-sm mb-5 whitespace-pre-line">{{ toast.message }}</p>
         <button
-          class="mt-8 w-full rounded-xl border border-rose-200 bg-rose-50
-          py-3 text-sm font-bold text-rose-600 hover:bg-rose-100 transition"
-          @click="deleteItem"
+          type="button"
+          class="w-full rounded-xl py-2.5 text-sm font-bold"
+          :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
+          @click="toast.show = false"
         >
-          已找到，確定刪除？
+          確定
         </button>
       </div>
     </div>

@@ -1,13 +1,26 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import HomeView from '../views/HomeView.vue'
 import ItemDetail from '../views/ItemDetail.vue'
+import AdminDashboard from '../views/AdminDashboard.vue'
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      path: '/item/:id', // 👈 動態路由參數，:id 代表可以接收 1, 2, 3 這種物品編號
+      path: '/',
+      name: 'home',
+      component: HomeView,
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: AdminDashboard,
+    },
+    {
+      path: '/item/:id',
       name: 'item-detail',
-      component: ItemDetail
-    }
+      component: ItemDetail,
+    },
   ],
 })
 
