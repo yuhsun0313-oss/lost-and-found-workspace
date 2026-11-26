@@ -221,7 +221,6 @@ class ItemController extends Controller
             ], 404);
         }
 
-        // 先檢查該筆是否超過 3 天人工審核期限；若已逾期則自動歸零並發信通知
         self::expireOverdueManualReviews($item->id);
         $item->refresh();
 
@@ -242,7 +241,6 @@ class ItemController extends Controller
             ], 409);
         }
 
-        // 解析上傳現場照片（支援 multipart/form-data 檔案上傳 或 base64 Data URI 字串）
         $uploadedDataUri = null;
         $uploadedBase64 = null;
 
@@ -259,8 +257,10 @@ class ItemController extends Controller
             $uploadedDataUri = 'data:' . $file->getMimeType() . ';base64,' . $uploadedBase64;
         } elseif (is_string($request->input('photo')) && trim($request->input('photo')) !== '') {
             $rawPhoto = trim($request->input('photo'));
-            $uploadedDataUri = $rawPhoto;
             $uploadedBase64 = $this->extractRawBase64($rawPhoto);
+            $uploadedDataUri = str_starts_with($rawPhoto, 'data:image/')
+                ? $rawPhoto
+                : ($uploadedBase64 ? 'data:image/jpeg;base64,' . $uploadedBase64 : $rawPhoto);
         }
 
         if (empty($uploadedBase64)) {
@@ -273,7 +273,13 @@ class ItemController extends Controller
         $claimantEmail = trim($request->input('claimant_email'));
         $originalBase64 = $this->resolveImageToBase64($item->image);
 
-        // 呼叫 Ollama VLM（支援 llama3.2-vision 或 llava）
+        Log::info("VLM 比對準備 (Item #{$item->id})", [
+            'model' => env('OLLAMA_VLM_MODEL', 'qwen2.5vl'),
+            'has_original_image' => $originalBase64 !== null,
+            'original_b64_len' => $originalBase64 ? strlen($originalBase64) : 0,
+            'uploaded_b64_len' => strlen($uploadedBase64),
+        ]);
+
         $vlmResult = $this->callOllamaVlm($item, $uploadedBase64, $originalBase64);
 
         if ($vlmResult === null) {
@@ -309,7 +315,6 @@ class ItemController extends Controller
             ], 200);
         }
 
-        // VLM 驗證失敗：累計該使用者對此物品的失敗次數
         $sameClaimant = !empty($item->claimant_email)
             && strcasecmp($item->claimant_email, $claimantEmail) === 0;
         $newFailCount = ($sameClaimant ? (int) $item->vlm_fail_count : 0) + 1;
@@ -354,157 +359,18 @@ class ItemController extends Controller
         ], 200);
     }
 
-    /**
-     * 6. 管理員後台：取得所有失物（強制置頂 needs_manual_review 並自動處理逾期）
-     */
-    public function adminIndex()
-    {
-        try {
-            self::expireOverdueManualReviews();
-
-            $items = Item::orderByRaw("
-                CASE
-                    WHEN review_status = 'needs_manual_review' THEN 0
-                    WHEN review_status = 'pending' OR review_status IS NULL THEN 1
-                    ELSE 2
-                END ASC
-            ")
-            ->orderBy('manual_review_deadline', 'asc')
-            ->orderBy('id', 'desc')
-            ->get();
-
-            return response()->json([
-                'success' => true,
-                'items' => $items,
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('管理後台載入失物失敗: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => '載入管理清單失敗：' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * 7. 管理員人工審核通過：寄送認領成功信並結案
-     */
-    public function adminApprove($id)
-    {
-        $item = Item::find($id);
-        if (!$item) {
-            return response()->json([
-                'success' => false,
-                'message' => '找不到該筆失物資料',
-            ], 404);
-        }
-
-        $recipient = $item->claimant_email;
-        $item->review_status = 'completed';
-        $item->manual_review_deadline = null;
-        $item->save();
-
-        $mailSent = false;
-        if (!empty($recipient)) {
-            $mailSent = $this->sendClaimSuccessMail($recipient, $item, '管理員人工審核');
-        }
-
-        return response()->json([
-            'success' => true,
-            'mail_sent' => $mailSent,
-            'message' => '已通過人工審核並完成結案' . ($mailSent ? '，已寄出認領成功通知信！' : '。'),
-            'data' => $item,
-        ], 200);
-    }
-
-    /**
-     * 8. 管理員人工審核失敗：寄送失敗／需重新驗證信，並將失敗次數歸零允許重試最多 3 次
-     */
-    public function adminReject(Request $request, $id)
-    {
-        $item = Item::find($id);
-        if (!$item) {
-            return response()->json([
-                'success' => false,
-                'message' => '找不到該筆失物資料',
-            ], 404);
-        }
-
-        $reason = trim((string) $request->input('reason', '')) ?: '管理員比對現場照片與原失物特徵不符，請重新上傳清晰照片。';
-        $recipient = $item->claimant_email;
-
-        $mailSent = false;
-        if (!empty($recipient)) {
-            try {
-                Mail::to($recipient)->send(new ClaimFailedMail($item, $reason));
-                $mailSent = true;
-            } catch (\Throwable $e) {
-                Log::warning("人工審核失敗寄信異常 (Item #{$item->id}): " . $e->getMessage());
-            }
-        }
-
-        $item->vlm_fail_count = 0;
-        $item->review_status = 'pending';
-        $item->manual_review_deadline = null;
-        $item->claim_proof_image = null;
-        $item->vlm_last_reason = $reason;
-        $item->save();
-
-        return response()->json([
-            'success' => true,
-            'mail_sent' => $mailSent,
-            'message' => '已退回人工審核，VLM 失敗次數已歸零（可重新驗證最多 3 次）' . ($mailSent ? '，已寄出通知信！' : '。'),
-            'data' => $item,
-        ], 200);
-    }
-
-    /**
-     * 9. 管理員永久刪除資料
-     */
-    public function destroy($id)
-    {
-        try {
-            $item = Item::find($id);
-            if (!$item) {
-                return response()->json([
-                    'success' => false,
-                    'message' => '找不到該筆物品資料',
-                ], 404);
-            }
-
-            $item->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => '物品刪除成功',
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('刪除物品失敗: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => '伺服器錯誤：' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    private function sendClaimSuccessMail(string $email, Item $item, string $verifiedBy): bool
-    {
-        try {
-            Mail::to($email)->send(new ClaimSuccessMail($item, $verifiedBy));
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning("認領成功寄信失敗 (Item #{$item->id}): " . $e->getMessage());
-            return false;
-        }
-    }
-
     private function extractRawBase64(?string $input): ?string
     {
         if (empty($input)) {
             return null;
         }
-        if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $input, $matches)) {
+        $trimmed = trim($input);
+        if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $trimmed, $matches)) {
             return preg_replace('/\s+/', '', $matches[1]);
+        }
+        $cleaned = preg_replace('/\s+/', '', $trimmed);
+        if (strlen($cleaned) > 100 && base64_decode($cleaned, true) !== false) {
+            return $cleaned;
         }
         return null;
     }
@@ -515,19 +381,39 @@ class ItemController extends Controller
             return null;
         }
 
-        $fromDataUri = $this->extractRawBase64($imageField);
+        $trimmed = trim($imageField);
+
+        $fromDataUri = $this->extractRawBase64($trimmed);
         if ($fromDataUri !== null) {
             return $fromDataUri;
         }
 
-        if (str_starts_with($imageField, 'http://') || str_starts_with($imageField, 'https://')) {
+        if (str_starts_with($trimmed, 'http://') || str_starts_with($trimmed, 'https://')) {
             try {
-                $resp = Http::timeout(10)->get($imageField);
+                $resp = Http::timeout(10)->get($trimmed);
                 if ($resp->successful()) {
                     return base64_encode($resp->body());
                 }
             } catch (\Throwable $e) {
                 Log::warning('下載原失物圖片轉 Base64 失敗: ' . $e->getMessage());
+            }
+        }
+
+        // 支援本機 / storage / public 相對路徑
+        $relativePath = ltrim(preg_replace('#^/?storage/#', '', $trimmed), '/');
+        $candidatePaths = [
+            public_path(ltrim($trimmed, '/')),
+            storage_path('app/public/' . $relativePath),
+            storage_path('app/' . $relativePath),
+            base_path($relativePath),
+        ];
+
+        foreach ($candidatePaths as $path) {
+            if (is_file($path) && is_readable($path)) {
+                $bytes = @file_get_contents($path);
+                if ($bytes !== false && strlen($bytes) > 0) {
+                    return base64_encode($bytes);
+                }
             }
         }
 
@@ -537,15 +423,15 @@ class ItemController extends Controller
     private function callOllamaVlm(Item $item, string $uploadedBase64, ?string $originalBase64): ?array
     {
         $ollamaUrl = rtrim(env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev'), '/');
-        $vlmModel = env('OLLAMA_VLM_MODEL', 'llama3.2-vision');
+        $vlmModel = env('OLLAMA_VLM_MODEL', 'qwen2.5vl');
 
         $images = $originalBase64 !== null
             ? [$originalBase64, $uploadedBase64]
             : [$uploadedBase64];
 
         $imageInstruction = $originalBase64 !== null
-            ? '你會收到兩張圖片：第 1 張是資料庫登錄的「原失物照片」，第 2 張是認領人現場拍攝的「尋獲證明照片」。請仔細比對兩張照片中的物品類別、顏色、品牌型號、外觀特徵與細節是否為同一物品（允許拍攝角度、光線與背景環境不同）。'
-            : '資料庫原失物未附帶圖片，你會收到 1 張認領人現場拍攝的「尋獲證明照片」。請根據以下失物文字資訊，嚴格判斷照片中的物品是否符合該失物描述。';
+            ? '你會收到兩張圖片：第 1 張是資料庫登錄的「原失物照片」，第 2 張是認領人現場拍攝的「尋獲證明照片」。請以寬鬆合理的實務標準比對兩張照片是否為「同一件物品」（只要物品種類、主色系與主要外觀特徵一致，即使拍攝角度、距離、光線、背景或是否為同一張照片／截圖不同，也應視為相符）。'
+            : '資料庫原失物未附帶圖片，你會收到 1 張認領人現場拍攝的「尋獲證明照片」。請根據以下失物文字資訊，判斷照片中的物品是否符合該失物描述。';
 
         $prompt = <<<PROMPT
 你是校園失物招領系統的 VLM 視覺審核專家。
@@ -576,7 +462,7 @@ PROMPT;
                 'format' => 'json',
                 'options' => [
                     'temperature' => 0.1,
-                    'num_predict' => 256,
+                    'num_predict' => 512,
                 ],
             ]);
 
@@ -586,6 +472,8 @@ PROMPT;
             }
 
             $rawText = trim((string) $response->json('response', ''));
+            Log::info("Ollama VLM 原始回覆 (Item #{$item->id}): " . $rawText);
+
             $cleanJson = trim(str_replace(['```json', '```', '`'], '', $rawText));
             $firstBrace = strpos($cleanJson, '{');
             $lastBrace = strrpos($cleanJson, '}');
@@ -601,7 +489,7 @@ PROMPT;
             }
 
             return [
-                'is_match' => (bool) ($decoded['is_match'] ?? false),
+                'is_match' => filter_var($decoded['is_match'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'confidence' => max(0, min(100, (int) ($decoded['confidence'] ?? 0))),
                 'reason' => trim((string) ($decoded['reason'] ?? 'VLM 已完成圖片比對。')),
             ];
