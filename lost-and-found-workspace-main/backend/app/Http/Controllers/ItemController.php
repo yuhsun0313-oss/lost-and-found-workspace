@@ -358,7 +358,16 @@ class ItemController extends Controller
             'message' => "照片與原失物特徵不符（目前失敗 {$newFailCount}/3 次，還剩 {$remaining} 次機會）。原因：{$vlmReason}",
         ], 200);
     }
-
+    private function sendClaimSuccessMail(string $email, Item $item, string $verifiedBy): bool
+    {
+        try {
+            Mail::to($email)->send(new ClaimSuccessMail($item, $verifiedBy));
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("認領成功寄信失敗 (Item #{$item->id}): " . $e->getMessage());
+            return false;
+        }
+    }
     private function extractRawBase64(?string $input): ?string
     {
         if (empty($input)) {
