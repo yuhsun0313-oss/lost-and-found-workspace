@@ -218,7 +218,9 @@ PROMPT;
             }
 
             $finalMatches = $scoredItems->sortByDesc(fn($item) => [$item->match_score, $item->id])->values();
-            $finalMatches->each(fn($item) => unset($item->match_score));
+            $finalMatches->each(function ($item) {
+                unset($item->match_score);
+            });
 
             return response()->json([
                 'success' => true,
