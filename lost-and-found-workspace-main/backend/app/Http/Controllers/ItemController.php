@@ -221,6 +221,7 @@ class ItemController extends Controller
             ], 404);
         }
 
+        // 先檢查該筆是否超過 3 天人工審核期限；若已逾期則自動歸零並發信通知
         self::expireOverdueManualReviews($item->id);
         $item->refresh();
 
@@ -241,6 +242,7 @@ class ItemController extends Controller
             ], 409);
         }
 
+        // 解析上傳現場照片（支援 multipart/form-data 檔案上傳 或 base64 Data URI / 純 Base64 字串）
         $uploadedDataUri = null;
         $uploadedBase64 = null;
 
@@ -280,6 +282,7 @@ class ItemController extends Controller
             'uploaded_b64_len' => strlen($uploadedBase64),
         ]);
 
+        // 呼叫 Ollama VLM
         $vlmResult = $this->callOllamaVlm($item, $uploadedBase64, $originalBase64);
 
         if ($vlmResult === null) {
@@ -315,6 +318,7 @@ class ItemController extends Controller
             ], 200);
         }
 
+        // VLM 驗證失敗：累計該使用者對此物品的失敗次數
         $sameClaimant = !empty($item->claimant_email)
             && strcasecmp($item->claimant_email, $claimantEmail) === 0;
         $newFailCount = ($sameClaimant ? (int) $item->vlm_fail_count : 0) + 1;
@@ -358,6 +362,140 @@ class ItemController extends Controller
             'message' => "照片與原失物特徵不符（目前失敗 {$newFailCount}/3 次，還剩 {$remaining} 次機會）。原因：{$vlmReason}",
         ], 200);
     }
+
+    /**
+     * 6. 管理員後台：取得所有失物（強制置頂 needs_manual_review 並自動處理逾期）
+     */
+    public function adminIndex()
+    {
+        try {
+            self::expireOverdueManualReviews();
+
+            $items = Item::orderByRaw("
+                CASE
+                    WHEN review_status = 'needs_manual_review' THEN 0
+                    WHEN review_status = 'pending' OR review_status IS NULL THEN 1
+                    ELSE 2
+                END ASC
+            ")
+            ->orderBy('manual_review_deadline', 'asc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+            return response()->json([
+                'success' => true,
+                'items' => $items,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('管理後台載入失物失敗: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => '載入管理清單失敗：' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * 7. 管理員人工審核通過：寄送認領成功信並結案
+     */
+    public function adminApprove($id)
+    {
+        $item = Item::find($id);
+        if (!$item) {
+            return response()->json([
+                'success' => false,
+                'message' => '找不到該筆失物資料',
+            ], 404);
+        }
+
+        $recipient = $item->claimant_email;
+        $item->review_status = 'completed';
+        $item->manual_review_deadline = null;
+        $item->save();
+
+        $mailSent = false;
+        if (!empty($recipient)) {
+            $mailSent = $this->sendClaimSuccessMail($recipient, $item, '管理員人工審核');
+        }
+
+        return response()->json([
+            'success' => true,
+            'mail_sent' => $mailSent,
+            'message' => '已通過人工審核並完成結案' . ($mailSent ? '，已寄出認領成功通知信！' : '。'),
+            'data' => $item,
+        ], 200);
+    }
+
+    /**
+     * 8. 管理員人工審核失敗：寄送失敗／需重新驗證信，並將失敗次數歸零允許重試最多 3 次
+     */
+    public function adminReject(Request $request, $id)
+    {
+        $item = Item::find($id);
+        if (!$item) {
+            return response()->json([
+                'success' => false,
+                'message' => '找不到該筆失物資料',
+            ], 404);
+        }
+
+        $reason = trim((string) $request->input('reason', '')) ?: '管理員比對現場照片與原失物特徵不符，請重新上傳清晰照片。';
+        $recipient = $item->claimant_email;
+
+        $mailSent = false;
+        if (!empty($recipient)) {
+            try {
+                Mail::to($recipient)->send(new ClaimFailedMail($item, $reason));
+                $mailSent = true;
+            } catch (\Throwable $e) {
+                Log::warning("人工審核失敗寄信異常 (Item #{$item->id}): " . $e->getMessage());
+            }
+        }
+
+        $item->vlm_fail_count = 0;
+        $item->review_status = 'pending';
+        $item->manual_review_deadline = null;
+        $item->claim_proof_image = null;
+        $item->vlm_last_reason = $reason;
+        $item->save();
+
+        return response()->json([
+            'success' => true,
+            'mail_sent' => $mailSent,
+            'message' => '已退回人工審核，VLM 失敗次數已歸零（可重新驗證最多 3 次）' . ($mailSent ? '，已寄出通知信！' : '。'),
+            'data' => $item,
+        ], 200);
+    }
+
+    /**
+     * 9. 管理員永久刪除資料
+     */
+    public function destroy($id)
+    {
+        try {
+            $item = Item::find($id);
+            if (!$item) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '找不到該筆物品資料',
+                ], 404);
+            }
+
+            $item->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => '物品刪除成功',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('刪除物品失敗: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => '伺服器錯誤：' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     private function sendClaimSuccessMail(string $email, Item $item, string $verifiedBy): bool
     {
         try {
@@ -368,6 +506,7 @@ class ItemController extends Controller
             return false;
         }
     }
+
     private function extractRawBase64(?string $input): ?string
     {
         if (empty($input)) {
