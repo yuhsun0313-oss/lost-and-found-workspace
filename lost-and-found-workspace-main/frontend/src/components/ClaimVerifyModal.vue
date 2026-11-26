@@ -53,12 +53,12 @@ async function submitVerification() {
   const email = claimantEmail.value.trim()
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) {
-    emit('toast', 'Email 格式錯誤', '請填寫正確的聯絡 Email，以利接收認領結果通知！')
+    emit('toast', 'Gmail 格式錯誤', '請填寫正確的聯絡 Gmail，以利後續面交與審核通知！')
     return
   }
 
   if (!proofPhotoDataUrl.value) {
-    emit('toast', '尚未上傳照片', '為防止誤刪，請務必上傳尋獲物品的現場照片！')
+    emit('toast', '尚未上傳照片', '為防止誤刪，請務必上傳尋獲／認領物品的現場照片！')
     return
   }
 
@@ -94,7 +94,6 @@ async function submitVerification() {
 
     if (data.verified) {
       emit('verified', data)
-      emit('toast', 'VLM 驗證成功', data.message || '認領驗證通過，通知信已寄出並完成結案！')
       emit('close')
     } else {
       failCount.value = data.vlm_fail_count ?? failCount.value + 1
@@ -121,7 +120,7 @@ async function submitVerification() {
     >
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-base font-black sm:text-lg" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
-          🛡️ 尋獲驗證與認領結案
+          🛡️ {{ item.type === 'lost' ? '拾獲回報驗證與結案' : '失主認領驗證與結案' }}
         </h3>
         <button
           type="button"
@@ -134,7 +133,7 @@ async function submitVerification() {
       </div>
 
       <p class="text-xs leading-relaxed mb-4" :class="isDarkMode ? 'text-[#aaaaaa]' : 'text-gray-600'">
-        為避免失物遭誤刪，請填寫聯絡 Email 並上傳現場物品照片。系統將透過 VLM 視覺模型比對特徵（累計失敗達 3 次將轉交管理員人工辨識 3 天）。
+        為避免失物遭誤刪，請填寫您的聯絡 Gmail 並上傳現場物品照片。系統將透過 VLM 視覺模型比對特徵（累計失敗達 3 次將轉交管理員人工辨識 3 天）。
       </p>
 
       <div
@@ -150,12 +149,12 @@ async function submitVerification() {
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#cccccc]' : 'text-gray-700'">
-            聯絡 Email *
+            聯絡 Gmail *
           </label>
           <input
             v-model="claimantEmail"
             type="email"
-            placeholder="請輸入接收認領通知的 Email"
+            placeholder="請輸入您的 Gmail 信箱（用於面交與審核通知）"
             class="w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-colors duration-300"
             :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#555555] border border-[#2a2a2a]' : 'bg-gray-100 text-[#0f172a] placeholder-gray-400 border border-gray-200'"
           />
@@ -163,7 +162,7 @@ async function submitVerification() {
 
         <div>
           <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#cccccc]' : 'text-gray-700'">
-            尋獲物品現場照片 *
+            物品現場照片 *
           </label>
           <div
             class="flex items-center justify-between rounded-xl px-4 py-2 transition-colors duration-300"

@@ -10,6 +10,7 @@ const {
   isDarkMode,
   isLoggedIn,
   currentUser,
+  currentUserEmail,
   userIdentity,
   isAdmin,
   setAuthSession,
@@ -22,6 +23,7 @@ const items = ref([])
 const selectedItem = ref(null)
 const showVerifyModal = ref(false)
 const verifyingItem = ref(null)
+const pendingReloadHome = ref(false)
 
 async function fetchItems() {
   try {
@@ -48,9 +50,10 @@ function openVerifyClaimModal(item) {
   showVerifyModal.value = true
 }
 
-async function handleClaimVerified() {
+function handleClaimVerified(data) {
   selectedItem.value = null
-  await fetchItems()
+  pendingReloadHome.value = true
+  showToast('已刪除該物品', data?.message || '已完成認領結案！點擊確定後將自動刷新頁面並返回主畫面。')
 }
 
 async function handleClaimEscalated() {
@@ -68,7 +71,6 @@ const aiQuery = ref('')
 const aiMatches = ref([])
 const aiReasonNotice = ref('')
 const isAiReasonable = ref(true)
-const aiExpandedTags = ref([])
 const isAiSearching = ref(false)
 const isSubmittingItem = ref(false)
 
@@ -82,6 +84,14 @@ function showToast(title, message) {
   toastModal.title = title
   toastModal.message = message
   toastModal.show = true
+}
+
+function closeToast() {
+  toastModal.show = false
+  if (pendingReloadHome.value) {
+    pendingReloadHome.value = false
+    window.location.assign('/')
+  }
 }
 
 const loginEmail = ref('')
@@ -105,6 +115,7 @@ const registerEmail = ref('')
 const registerPassword = ref('')
 const registerPasswordConfirm = ref('')
 const isLoggingIn = ref(false)
+const isRegistering = ref(false)
 
 async function handleLoginSubmit() {
   if (isLoggingIn.value) return
@@ -154,6 +165,8 @@ async function handleLoginSubmit() {
 }
 
 async function handleRegisterSubmit() {
+  if (isRegistering.value) return
+
   if (!registerName.value || !registerEmail.value || !registerPassword.value) {
     showToast('欄位未填寫', '請填寫所有必填欄位！')
     return
@@ -164,6 +177,7 @@ async function handleRegisterSubmit() {
   }
 
   try {
+    isRegistering.value = true
     const response = await fetch(`${API_BASE_URL}/register`, {
       method: 'POST',
       headers: {
@@ -194,6 +208,8 @@ async function handleRegisterSubmit() {
   } catch (error) {
     console.error('連線錯誤:', error)
     showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
+  } finally {
+    isRegistering.value = false
   }
 }
 
@@ -209,7 +225,6 @@ async function handleAiMatch() {
     isAiSearching.value = true
     aiReasonNotice.value = ''
     isAiReasonable.value = true
-    aiExpandedTags.value = []
     showToast('AI 分析中', '正在透過 Ollama AI 進行語意聯想與合理性稽核，請稍候...')
 
     const response = await fetch(`${API_BASE_URL}/ai-match`, {
@@ -230,10 +245,6 @@ async function handleAiMatch() {
     if (data.success) {
       isAiReasonable.value = data.is_reasonable !== false
       aiReasonNotice.value = data.reason || ''
-      aiExpandedTags.value = [
-        ...(data.expanded_items || []).slice(0, 6),
-        ...(data.expanded_locations || []).slice(0, 4),
-      ]
       aiMatches.value = data.matches || []
 
       if (!isAiReasonable.value) {
@@ -263,6 +274,7 @@ function handlePublishClick() {
     authMode.value = 'login'
     showAuthModal.value = true
   } else {
+    formPublisherEmail.value = currentUserEmail.value || ''
     showForm.value = true
   }
 }
@@ -313,6 +325,7 @@ const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStar
 const formTitle = ref('')
 const formCategory = ref('')
 const formLocation = ref('')
+const formPublisherEmail = ref('')
 const formDate = ref(formattedDate)
 const formType = ref('found')
 const formImage = ref('')
@@ -342,10 +355,13 @@ const paginatedItems = computed(() => {
 async function submitItem() {
   if (isSubmittingItem.value) return
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   const errors = []
   if (!formTitle.value.trim()) errors.push('請填寫物品名稱！')
-  if (!formLocation.value.trim()) errors.push('請填寫地點！')
   if (!formCategory.value) errors.push('請選擇物品分類！')
+  if (!formLocation.value.trim()) errors.push('請填寫地點！')
+  if (!emailRegex.test(formPublisherEmail.value.trim())) errors.push('請填寫格式正確的聯絡人 Gmail 信箱！')
+  if (!formImage.value.trim()) errors.push('無論是招領或尋找，刊登時皆必須上傳物品照片！')
 
   if (errors.length > 0) {
     showToast('欄位不完整', errors.join('\n'))
@@ -364,6 +380,7 @@ async function submitItem() {
         title: formTitle.value,
         category: formCategory.value,
         location: formLocation.value,
+        publisher_email: formPublisherEmail.value.trim(),
         date: formDate.value,
         type: formType.value,
         image: formImage.value.trim(),
@@ -379,6 +396,7 @@ async function submitItem() {
       formTitle.value = ''
       formCategory.value = ''
       formLocation.value = ''
+      formPublisherEmail.value = currentUserEmail.value || ''
       formType.value = 'found'
       formImage.value = ''
       showForm.value = false
@@ -538,18 +556,6 @@ async function submitItem() {
           :class="isDarkMode ? 'bg-[#2a0e12] border-[#7f1d1d] text-[#fca5a5]' : 'bg-red-50 border-red-200 text-red-700'"
         >
           ⚠️ {{ aiReasonNotice }}
-        </div>
-
-        <div v-if="aiExpandedTags.length > 0 && isAiReasonable" class="mt-4 flex flex-wrap items-center gap-1.5">
-          <span class="text-xs font-bold mr-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-500'">AI 語意擴展：</span>
-          <span
-            v-for="tag in aiExpandedTags"
-            :key="tag"
-            class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-            :class="isDarkMode ? 'bg-[#1e1e1e] text-[#ff9000]' : 'bg-blue-50 text-[#1e3a8a]'"
-          >
-            #{{ tag }}
-          </span>
         </div>
 
         <!-- AI 推薦比對結果區塊 -->
@@ -868,6 +874,17 @@ async function submitItem() {
           </div>
 
           <div>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">聯絡人 Gmail *</label>
+            <input
+              v-model="formPublisherEmail"
+              type="email"
+              placeholder="例如 example@gmail.com（驗證成功時接收面交通知）"
+              class="w-full rounded-xl px-4 py-2 text-sm outline-none sm:py-2.5 transition-colors duration-300"
+              :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#444444]' : 'bg-gray-100 text-gray-900 placeholder-gray-400 border border-gray-200'"
+            />
+          </div>
+
+          <div>
             <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">日期</label>
             <input
               v-model="formDate"
@@ -878,7 +895,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">上傳物品照片 (選填)</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">上傳物品照片 * (必填)</label>
             <div
               class="flex items-center justify-between rounded-xl px-4 py-2 transition-colors duration-300"
               :class="isDarkMode ? 'bg-[#000000]' : 'bg-gray-100 border border-gray-200'"
@@ -1072,11 +1089,12 @@ async function submitItem() {
 
           <button
             type="button"
-            class="w-full rounded-xl py-2.5 text-xs font-bold transition mt-2 sm:py-3 sm:text-sm"
+            :disabled="isRegistering"
+            class="w-full rounded-xl py-2.5 text-xs font-bold transition mt-2 sm:py-3 sm:text-sm disabled:opacity-50"
             :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handleRegisterSubmit"
           >
-            註冊帳號 (Register)
+            {{ isRegistering ? '註冊中...' : '註冊帳號 (Register)' }}
           </button>
         </div>
       </div>
@@ -1086,7 +1104,7 @@ async function submitItem() {
     <div
       v-if="toastModal.show"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      @click.self="toastModal.show = false"
+      @click.self="closeToast"
     >
       <div
         class="w-full max-w-sm rounded-2xl p-5 text-center sm:p-6 transition-colors duration-300"
@@ -1102,7 +1120,7 @@ async function submitItem() {
           type="button"
           class="w-full rounded-xl py-2 text-xs font-bold transition sm:py-2.5 sm:text-sm"
           :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
-          @click="toastModal.show = false"
+          @click="closeToast"
         >
           確定
         </button>

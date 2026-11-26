@@ -12,6 +12,7 @@ const itemId = route.params.id
 const item = ref(null)
 const isLoading = ref(true)
 const showVerifyModal = ref(false)
+const pendingReloadHome = ref(false)
 
 const toast = reactive({
   show: false,
@@ -23,6 +24,14 @@ function showToast(title, message) {
   toast.title = title
   toast.message = message
   toast.show = true
+}
+
+function closeToast() {
+  toast.show = false
+  if (pendingReloadHome.value) {
+    pendingReloadHome.value = false
+    window.location.assign('/')
+  }
 }
 
 async function fetchItem() {
@@ -46,10 +55,9 @@ onMounted(() => {
   fetchItem()
 })
 
-function handleVerified() {
-  setTimeout(() => {
-    router.push('/')
-  }, 1500)
+function handleVerified(data) {
+  pendingReloadHome.value = true
+  showToast('已刪除該物品', data?.message || '已完成認領結案！點擊確定後將重新整理並返回主畫面。')
 }
 </script>
 
@@ -133,7 +141,7 @@ function handleVerified() {
     <div
       v-if="toast.show"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      @click.self="toast.show = false"
+      @click.self="closeToast"
     >
       <div
         class="w-full max-w-sm rounded-2xl p-6 text-center"
@@ -145,7 +153,7 @@ function handleVerified() {
           type="button"
           class="w-full rounded-xl py-2.5 text-sm font-bold"
           :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
-          @click="toast.show = false"
+          @click="closeToast"
         >
           確定
         </button>

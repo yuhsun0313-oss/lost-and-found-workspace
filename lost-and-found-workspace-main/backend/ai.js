@@ -2,10 +2,40 @@
 const express = require('express');
 const router = express.Router();
 
+function normalizeQueryText(text) {
+  let normalized = String(text || '').trim();
+  const replacements = [
+    ['不見了', '不見'],
+    ['遺失了', '遺失'],
+    ['弄丟了', '弄丟'],
+    ['弄不見了', '弄不見'],
+    ['弄不見', '不見'],
+    ['掉了', '掉'],
+    ['找到了', '找到'],
+    ['撿到了', '撿到'],
+    ['忘記了', '忘記'],
+    ['留下了', '留下'],
+    ['落在', '在'],
+    ['掉在', '在'],
+  ];
+  for (const [from, to] of replacements) {
+    normalized = normalized.split(from).join(to);
+  }
+  normalized = normalized.replace(/[\s,\p{P}]+/gu, '');
+  normalized = normalized.replace(/(好像|疑似|不小心|剛剛|昨天|今天|前天|我的|那個|一個|這支|這台|這張|這本|呢|嗎|吧|啊|呀|喔|啦|欸|耶|嘛)+/gu, '');
+  normalized = normalized.replace(/(了|的|著|過)+/gu, '');
+  return normalized.trim() || String(text || '').trim();
+}
+
 const SYSTEM_PROMPT = `你是一位專業的「校園AI尋物通」失物招領語意分析與防呆稽核專家，必須嚴格遵守以下規則並只輸出合法的純 JSON（不得包含 markdown 標記、註解或額外說明文字）：
+
+核心一致性規則（極重要）：
+- 在解析前，必須完全忽略句子中的語氣助詞、時態詞與冗贅連接詞（例如：「了」、「的」、「著」、「過」、「啊」、「呢」、「嗎」、「吧」、「呀」、「喔」、「啦」、「好像」、「疑似」、「不小心」、「在...裡」）。
+- 只要核心「物品」與核心「地點」相同（例如「我在綜三不見筆電」與「我在綜三不見了筆電」），你必須提取出完全一致的核心關鍵字與擴展詞清單，並將最核心、最直接的物品名詞放在 expanded_items 的第一個元素！
 
 1. 【全品項與品牌型號聯想 (expanded_items)】：
    從使用者描述提取核心物品並做最大化語意擴展，涵蓋主流品牌、常見型號、中英文俗稱、外觀特徵與配件。
+   範例：「筆電」-> ["筆電", "筆記型電腦", "Laptop", "MacBook", "ASUS", "ROG", "Acer", "Lenovo", "HP", "Dell", "MSI", "電腦包", "充電器"]。
    範例：「手機」-> ["手機", "智慧型手機", "iPhone", "iPhone 13", "iPhone 14", "iPhone 15", "iPhone 16", "Samsung", "Galaxy", "Google Pixel", "ASUS", "ROG Phone", "Zenfone", "OPPO", "Sony", "Xperia", "小米", "Redmi", "手機殼", "保護殼", "鏡頭貼"]。
 
 2. 【校園地點同義詞擴展 (expanded_locations)】：
@@ -43,6 +73,7 @@ router.post('/api/ai-match', async (req, res) => {
       });
     }
 
+    const canonical = normalizeQueryText(trimmed);
     const ollamaUrl = (process.env.OLLAMA_URL || 'https://tapping-carol-engaging.ngrok-free.dev').replace(/\/+$/, '');
     const model = process.env.OLLAMA_TEXT_MODEL || 'llama3';
 
@@ -55,11 +86,12 @@ router.post('/api/ai-match', async (req, res) => {
       body: JSON.stringify({
         model,
         system: SYSTEM_PROMPT,
-        prompt: `使用者輸入的尋物描述如下，請依規範回傳純 JSON：\n「${trimmed}」`,
+        prompt: `使用者輸入的尋物描述（已去除語氣助詞標準化）如下，請依規範回傳純 JSON：\n「${canonical}」`,
         stream: false,
         format: 'json',
         options: {
-          temperature: 0.2,
+          temperature: 0.0,
+          seed: 42,
           num_predict: 512,
         },
       }),
@@ -160,8 +192,5 @@ router.post('/api/ai-match', async (req, res) => {
     return res.status(500).json({ success: false, message: 'AI 服務連線失敗' });
   }
 });
-
-module.exports = router;
-
 
 module.exports = router;

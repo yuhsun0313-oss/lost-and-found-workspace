@@ -11,6 +11,7 @@ class Item extends Model
         'category',
         'description',
         'location',
+        'publisher_email',
         'date',
         'type',
         'image',

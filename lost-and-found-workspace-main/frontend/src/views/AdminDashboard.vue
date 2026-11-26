@@ -388,9 +388,18 @@ async function hardDeleteItem(item) {
 
               <!-- 待核實資料明細 -->
               <div class="lg:col-span-6 space-y-2 text-xs sm:text-sm">
+                <div class="flex items-center gap-2">
+                  <span
+                    class="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                    :class="item.type === 'found' ? 'bg-[#052e16] text-[#4ade80]' : 'bg-[#451a03] text-[#ff9000]'"
+                  >
+                    {{ item.type === 'found' ? '情境 A：已拾獲（招領）' : '情境 B：正在尋找（遺失）' }}
+                  </span>
+                </div>
                 <h2 class="text-lg font-black">{{ item.title }}</h2>
                 <p class="opacity-80">📍 地點：{{ item.location || '未填寫' }} ｜ 📅 時間：{{ item.date }}</p>
-                <p class="opacity-80">📧 認領聯絡 Email：{{ item.claimant_email || '尚無認領申請' }}</p>
+                <p class="opacity-80">📨 原刊登者 Gmail：{{ item.publisher_email || '未填寫' }}</p>
+                <p class="opacity-80">📧 驗證申請者 Gmail：{{ item.claimant_email || '尚無認領申請' }}</p>
                 <p class="opacity-80">🤖 VLM 累計失敗次數：{{ item.vlm_fail_count ?? 0 }} / 3</p>
                 <div
                   v-if="item.vlm_last_reason"

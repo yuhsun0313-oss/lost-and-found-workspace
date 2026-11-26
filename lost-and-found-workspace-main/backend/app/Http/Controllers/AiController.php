@@ -10,6 +10,39 @@ use Illuminate\Support\Facades\Log;
 
 class AiController extends Controller
 {
+    /**
+     * 正規化尋物描述：移除語氣助詞、常見動詞時態詞綴與標點空白，
+     * 確保「我在綜三不見筆電」與「我在綜三不見了筆電」產生完全一致的語意解析與搜尋結果。
+     */
+    private function normalizeQueryText(string $text): string
+    {
+        $normalized = trim($text);
+        // 統一動詞 + 語氣詞綴
+        $replacements = [
+            '不見了' => '不見',
+            '遺失了' => '遺失',
+            '弄丟了' => '弄丟',
+            '弄不見了' => '弄不見',
+            '弄不見' => '不見',
+            '掉了' => '掉',
+            '找到了' => '找到',
+            '撿到了' => '撿到',
+            '忘記了' => '忘記',
+            '留下了' => '留下',
+            '落在' => '在',
+            '掉在' => '在',
+        ];
+        $normalized = str_replace(array_keys($replacements), array_values($replacements), $normalized);
+
+        // 移除句中或句尾純語氣助詞、時間副詞與標點空白
+        $normalized = preg_replace('/[\s,\p{P}]+/u', '', $normalized);
+        $normalized = preg_replace('/(好像|疑似|不小心|剛剛|昨天|今天|前天|我的|那個|一個|這支|這台|這張|這本|呢|嗎|吧|啊|呀|喔|啦|欸|耶|嘛|喔)+/u', '', $normalized);
+        // 去掉在常見動詞或名詞間殘留的「了」「的」「著」「過」
+        $normalized = preg_replace('/(了|的|著|過)+/u', '', $normalized);
+
+        return trim($normalized) !== '' ? trim($normalized) : trim($text);
+    }
+
     public function aiMatch(Request $request)
     {
         try {
@@ -27,14 +60,17 @@ class AiController extends Controller
                 ], 200);
             }
 
+            $canonicalDescription = $this->normalizeQueryText($userDescription);
+
             // 基礎斷詞（作為 AI 逾時時的保底）
-            $stopWords = ['我', '你', '他', '的', '了', '在', '個', '件', '支', '張', '本', '昨天', '今天', '明天', '不見', '遺失', '掉', '找', '尋', '求助', '東西', '物品', '找不到', '看到', '最後', '裡面', '裡'];
+            $stopWords = ['我', '你', '他', '的', '了', '在', '個', '件', '支', '張', '本', '昨天', '今天', '明天', '不見', '不見了', '遺失', '遺失了', '掉', '掉了', '弄丟', '弄丟了', '找', '尋', '求助', '東西', '物品', '找不到', '看到', '最後', '裡面', '裡'];
             $words = preg_split('/[\s,\p{P}]+/u', $userDescription, -1, PREG_SPLIT_NO_EMPTY);
             $filteredWords = array_values(array_filter($words, function ($word) use ($stopWords) {
-                return mb_strlen($word) > 1 && !in_array($word, $stopWords);
+                $clean = str_replace(['了', '的', '嗎', '呢', '吧', '啊'], '', $word);
+                return mb_strlen($clean) > 1 && !in_array($clean, $stopWords) && !in_array($word, $stopWords);
             }));
 
-            $cacheKey = 'ai_semantic_v2_' . md5($userDescription);
+            $cacheKey = 'ai_semantic_v3_' . md5($canonicalDescription);
             $aiData = Cache::get($cacheKey, []);
 
             if (empty($aiData)) {
@@ -44,14 +80,20 @@ class AiController extends Controller
                 $systemPrompt = <<<'PROMPT'
 你是一位專業的「校園AI尋物通」失物招領語意分析與防呆稽核專家，必須嚴格遵守以下規則並只輸出合法的純 JSON（不得包含 markdown 標記、註解或額外說明文字）：
 
+核心一致性規則（極重要）：
+- 在解析前，必須完全忽略句子中的語氣助詞、時態詞與冗贅連接詞（例如：「了」、「的」、「著」、「過」、「啊」、「呢」、「嗎」、「吧」、「呀」、「喔」、「啦」、「好像」、「疑似」、「不小心」、「在...裡」）。
+- 只要核心「物品」與核心「地點」相同（例如「我在綜三不見筆電」與「我在綜三不見了筆電」），你必須提取出完全一致的核心關鍵字與擴展詞清單，並將最核心、最直接的物品名詞放在 expanded_items 的第一個元素！
+
 任務目標：
 1. 【全品項與品牌型號聯想 (expanded_items)】：
-   - 從使用者描述中提取核心物品，並進行最大化語意擴展，包含：主流品牌、常見型號、中英文俗稱、材質、外觀特徵與常見配件。
-   - 範例：若輸入「手機」，應擴展為 ["手機", "智慧型手機", "iPhone", "iPhone 13", "iPhone 14", "iPhone 15", "iPhone 16", "Samsung", "Galaxy", "Google Pixel", "ASUS", "ROG Phone", "Zenfone", "OPPO", "Sony", "Xperia", "小米", "Redmi", "手機殼", "保護殼", "鏡頭貼"]。
+   - 提取核心物品並做最大化語意擴展，涵蓋主流品牌、常見型號、中英文俗稱、材質、外觀特徵與常見配件。
+   - 第 1 個元素必須是核心物品標準簡稱（如「筆電」、「手機」、「水壺」），後面接著同義詞與品牌型號。
+   - 範例：「筆電」-> ["筆電", "筆記型電腦", "Laptop", "MacBook", "MacBook Air", "MacBook Pro", "ASUS", "ROG", "ZenBook", "Acer", "Lenovo", "ThinkPad", "HP", "Dell", "MSI", "電腦包", "充電器"]。
+   - 範例：「手機」-> ["手機", "智慧型手機", "iPhone", "iPhone 13", "iPhone 14", "iPhone 15", "iPhone 16", "Samsung", "Galaxy", "Google Pixel", "ASUS", "ROG Phone", "Zenfone", "OPPO", "Sony", "Xperia", "小米", "Redmi", "手機殼", "保護殼", "鏡頭貼"]。
    - 若無明確物品則回傳空陣列 []。
 2. 【校園地點同義詞擴展 (expanded_locations)】：
    - 提取校園地點並自動擴展正式全稱、簡稱、大樓別稱、樓層與教室編號寫法（含空格/無空格/「教室」/「館」變體）。
-   - 範例：若輸入「綜三502教室」，應擴展為 ["綜三502教室", "綜三502", "綜三 502", "綜三館502", "綜合教學三館502", "綜合領域三館502教室", "綜合三館502教室", "綜三"]。
+   - 範例：「綜三502教室」-> ["綜三502教室", "綜三502", "綜三 502", "綜三館502", "綜合教學三館502", "綜合領域三館502教室", "綜合三館502教室", "綜三"]。
    - 若無明確地點則回傳空陣列 []。
 3. 【常識與邏輯合理性評估 (is_reasonable, reasonableness_score, reason)】：
    - 比對「遺失物品」與「遺失地點」在現實校園生活中的合理性，偵測惡作劇、亂打字、超現實或違反物理常識的描述（例如：「大象掉在飲水機裡」、「核彈在鉛筆盒」、「恐龍在男廁」、「asdflkj」）。
@@ -59,7 +101,7 @@ class AiController extends Controller
    - 若為明顯惡作劇、毫無意義亂碼或完全不合常理，is_reasonable 設為 false，reasonableness_score 給 0~39，並在 reason 用繁體中文簡潔說明不合理之處。
 4. 【輸出格式（嚴格純 JSON）】：
    {
-     "expanded_items": ["物品與品牌型號關鍵字1", "關鍵字2"],
+     "expanded_items": ["核心物品", "同義詞或品牌型號1", "關鍵字2"],
      "expanded_locations": ["地點同義詞1", "地點同義詞2"],
      "is_reasonable": true,
      "reasonableness_score": 95,
@@ -67,7 +109,7 @@ class AiController extends Controller
    }
 PROMPT;
 
-                $userPrompt = "使用者輸入的尋物描述如下，請依規範回傳純 JSON：\n「{$userDescription}」";
+                $userPrompt = "使用者輸入的尋物描述（已去除語氣助詞標準化）如下，請依規範回傳純 JSON：\n「{$canonicalDescription}」";
 
                 try {
                     $response = Http::withHeaders([
@@ -79,7 +121,8 @@ PROMPT;
                         'stream' => false,
                         'format' => 'json',
                         'options' => [
-                            'temperature' => 0.2,
+                            'temperature' => 0.0,
+                            'seed' => 42,
                             'num_predict' => 512,
                         ],
                     ]);
@@ -138,7 +181,7 @@ PROMPT;
                 $q->whereNull('review_status')
                   ->orWhere('review_status', '!=', 'completed');
             })
-            ->where(function ($query) use ($expandedItems, $expandedLocations, $userDescription) {
+            ->where(function ($query) use ($expandedItems, $expandedLocations, $canonicalDescription) {
                 foreach ($expandedItems as $itm) {
                     $query->orWhere('title', 'ILIKE', "%{$itm}%")
                           ->orWhere('category', 'ILIKE', "%{$itm}%")
@@ -147,8 +190,8 @@ PROMPT;
                 foreach ($expandedLocations as $loc) {
                     $query->orWhere('location', 'ILIKE', "%{$loc}%");
                 }
-                if (mb_strlen($userDescription) > 1) {
-                    $query->orWhere('title', 'ILIKE', "%{$userDescription}%");
+                if (mb_strlen($canonicalDescription) > 1) {
+                    $query->orWhere('title', 'ILIKE', "%{$canonicalDescription}%");
                 }
             })
             ->latest('id')
