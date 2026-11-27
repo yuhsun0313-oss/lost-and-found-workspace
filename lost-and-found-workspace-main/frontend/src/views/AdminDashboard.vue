@@ -279,8 +279,8 @@ async function hardDeleteItem(item) {
           <div class="flex flex-wrap gap-2">
             <button
               v-for="tab in [
-                { key: 'active', label: '未結案（人工辨識置頂）' },
-                { key: 'manual', label: `僅人工辨識 (${manualReviewCount})` },
+                { key: 'active', label: '未結案（需人工辨識的置頂）' },
+                { key: 'manual', label: `僅需人工辨識 (${manualReviewCount})` },
                 { key: 'completed', label: `已結案 (${completedCount})` },
                 { key: 'all', label: '全部資料' },
               ]"
