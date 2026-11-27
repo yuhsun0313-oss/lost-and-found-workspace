@@ -9,7 +9,8 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'verified', 'escalated', 'toast'])
 
-const { API_BASE_URL, isDarkMode, currentUserEmail, compressImageToDataUrl } = useAppState()
+const { API_BASE_URL, isDarkMode, authToken, currentUserEmail, compressImageToDataUrl } =
+  useAppState()
 
 const claimantEmail = ref('')
 const proofPhotoDataUrl = ref('')
@@ -24,7 +25,7 @@ watch(
       claimantEmail.value = currentUserEmail.value || ''
       proofPhotoDataUrl.value = ''
       vlmFeedback.value = ''
-      failCount.value = props.item?.vlm_fail_count || 0
+      failCount.value = props.item?.my_attempt_count ?? props.item?.vlm_fail_count ?? 0
     }
   }
 )
@@ -66,12 +67,17 @@ async function submitVerification() {
     isVerifying.value = true
     vlmFeedback.value = ''
 
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    }
+    if (authToken.value) {
+      headers.Authorization = `Bearer ${authToken.value}`
+    }
+
     const response = await fetch(`${API_BASE_URL}/items/${props.item.id}/verify-claim`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         claimant_email: email,
         photo: proofPhotoDataUrl.value,
@@ -133,7 +139,7 @@ async function submitVerification() {
       </div>
 
       <p class="text-xs leading-relaxed mb-4" :class="isDarkMode ? 'text-[#aaaaaa]' : 'text-gray-600'">
-        為避免失物遭誤刪，請填寫您的聯絡 Gmail 並上傳現場物品照片。系統將透過 VLM 視覺模型比對特徵（累計失敗達 3 次將轉交管理員人工辨識 3 天）。
+        為避免失物遭誤刪，請填寫您的聯絡 Gmail 並上傳現場物品照片。每個帳號對同一件物品最多可上傳驗證 3 次（累計失敗達 3 次將轉交管理員人工辨識；若遭人工駁回將重置次數）。
       </p>
 
       <div
@@ -142,7 +148,7 @@ async function submitVerification() {
       >
         <p class="font-bold truncate">目標失物：{{ item.title }}</p>
         <p class="mt-0.5" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-500'">
-          目前 VLM 失敗次數：{{ failCount }} / 3
+          目前帳號已驗證失敗次數：{{ failCount }} / 3
         </p>
       </div>
 
@@ -204,12 +210,12 @@ async function submitVerification() {
       <div class="mt-6 flex gap-3">
         <button
           type="button"
-          :disabled="isVerifying"
+          :disabled="isVerifying || failCount >= 3"
           class="flex-1 rounded-xl py-2.5 text-xs font-bold transition sm:text-sm disabled:opacity-50"
           :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
           @click="submitVerification"
         >
-          {{ isVerifying ? 'VLM 視覺比對中...' : '送出 AI 視覺驗證' }}
+          {{ isVerifying ? 'VLM 視覺比對中...' : failCount >= 3 ? '已達 3 次上限' : '送出 AI 視覺驗證' }}
         </button>
         <button
           type="button"

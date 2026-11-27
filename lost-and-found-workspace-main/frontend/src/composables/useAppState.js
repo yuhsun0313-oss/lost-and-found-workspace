@@ -9,6 +9,7 @@ const THEME_STORAGE_KEY = 'theme_mode'
 const isDarkMode = ref(localStorage.getItem(THEME_STORAGE_KEY) === 'dark')
 const authToken = ref(localStorage.getItem(AUTH_TOKEN_KEY) || '')
 const isLoggedIn = ref(false)
+const currentUserId = ref(null)
 const currentUser = ref('')
 const currentUserEmail = ref('')
 const userIdentity = ref('一般成員')
@@ -27,6 +28,7 @@ function setAuthSession(token, user) {
     localStorage.setItem(AUTH_TOKEN_KEY, token)
   }
   isLoggedIn.value = true
+  currentUserId.value = user?.id ?? null
   currentUser.value = user?.name || ''
   currentUserEmail.value = user?.email || ''
   userIdentity.value = user?.identity || '一般成員'
@@ -36,6 +38,7 @@ function clearAuthSession() {
   authToken.value = ''
   localStorage.removeItem(AUTH_TOKEN_KEY)
   isLoggedIn.value = false
+  currentUserId.value = null
   currentUser.value = ''
   currentUserEmail.value = ''
   userIdentity.value = '一般成員'
@@ -124,7 +127,7 @@ function formatRemainingTime(deadlineStr) {
   if (!deadlineStr) return '未設定期限'
   const diffMs = new Date(deadlineStr).getTime() - Date.now()
   if (Number.isNaN(diffMs)) return '格式異常'
-  if (diffMs <= 0) return '已逾期（系統將自動重置）'
+  if (diffMs <= 0) return '已逾期（系統將自動清除／重置）'
 
   const totalMinutes = Math.floor(diffMs / 60000)
   const days = Math.floor(totalMinutes / (60 * 24))
@@ -139,6 +142,7 @@ export function useAppState() {
     isDarkMode,
     authToken,
     isLoggedIn,
+    currentUserId,
     currentUser,
     currentUserEmail,
     userIdentity,

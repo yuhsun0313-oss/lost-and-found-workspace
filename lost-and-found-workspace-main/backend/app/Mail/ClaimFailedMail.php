@@ -16,7 +16,7 @@ class ClaimFailedMail extends Mailable
     public Item $item;
     public string $reason;
 
-    public function __construct(Item $item, string $reason = '人工審核未通過或已超過 3 天審核期限')
+    public function __construct(Item $item, string $reason = '此筆認領／尋獲申請已被管理員人工審核駁回，請重新上傳清晰的物品圖片並進行驗證。')
     {
         $this->item = $item;
         $this->reason = $reason;
@@ -25,7 +25,7 @@ class ClaimFailedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "【校園AI尋物通】認領失敗／需重新驗證通知 - {$this->item->title}",
+            subject: "【校園AI尋物通】人工審核駁回／請重新上傳圖片驗證通知 - {$this->item->title}",
         );
     }
 

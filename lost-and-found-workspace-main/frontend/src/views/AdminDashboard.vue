@@ -137,7 +137,7 @@ async function rejectItem(item) {
         Authorization: `Bearer ${authToken.value}`,
       },
       body: JSON.stringify({
-        reason: '管理員比對現場照片與原失物特徵不符，已重置 VLM 驗證次數，請重新拍攝清晰照片驗證。',
+        reason: '此筆申請已被管理員人工審核駁回，請重新上傳清晰的物品圖片並進行驗證。',
       }),
     })
     const data = await response.json()
@@ -359,6 +359,13 @@ async function hardDeleteItem(item) {
               >
                 ⏰ {{ formatRemainingTime(item.manual_review_deadline) }}
               </span>
+              <span
+                v-else-if="item.review_status === 'completed' && item.completed_delete_deadline"
+                class="rounded-lg px-3 py-1 text-xs font-bold"
+                :class="isDarkMode ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'"
+              >
+                🗓️ 保留期滿自動刪除：{{ formatRemainingTime(item.completed_delete_deadline) }}
+              </span>
             </div>
 
             <!-- 圖片比對與資訊主體 -->
@@ -393,7 +400,7 @@ async function hardDeleteItem(item) {
                     class="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
                     :class="item.type === 'found' ? 'bg-[#052e16] text-[#4ade80]' : 'bg-[#451a03] text-[#ff9000]'"
                   >
-                    {{ item.type === 'found' ? '情境 A：已拾獲（招領）' : '情境 B：正在尋找（遺失）' }}
+                    {{ item.type === 'found' ? '已拾獲（招領）' : '正在尋找（遺失）' }}
                   </span>
                 </div>
                 <h2 class="text-lg font-black">{{ item.title }}</h2>

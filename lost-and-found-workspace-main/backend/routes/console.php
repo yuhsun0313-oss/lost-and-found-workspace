@@ -10,8 +10,9 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Artisan::command('claims:expire-overdue', function () {
-    $count = ItemController::expireOverdueManualReviews();
-    $this->info("已自動重置 {$count} 筆超過 3 天期限的待人工審核失物。");
-})->purpose('自動重置超過 3 天人工審核期限的認領失敗次數並寄信通知');
+    $expiredReviews = ItemController::expireOverdueManualReviews();
+    $purgedCompleted = ItemController::purgeExpiredCompletedItems();
+    $this->info("已自動重置 {$expiredReviews} 筆逾期人工審核，並清除 {$purgedCompleted} 筆超過 3 個月之已結案失物。");
+})->purpose('自動重置逾期人工審核並清除保留滿 3 個月的已結案失物');
 
 Schedule::command('claims:expire-overdue')->hourly();

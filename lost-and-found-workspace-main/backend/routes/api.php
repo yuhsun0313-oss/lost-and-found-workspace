@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ItemController;
@@ -22,7 +23,7 @@ Route::post('/items/{id}/verify-claim', [ItemController::class, 'verifyClaim']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-// 登入狀態持久化驗證路由（Sanctum Bearer Token）
+// 需登入憑證（Sanctum Bearer Token）之路由
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/verify', [AuthController::class, 'me']);
@@ -31,12 +32,26 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    // 刊登者自行編輯／刪除自己刊登中物品（管理員亦可使用）
+    Route::put('/items/{id}', [ItemController::class, 'update']);
+    Route::delete('/items/{id}', [ItemController::class, 'destroy']);
+
+    // 帳號基本資料安全修改（更改 Email、更改密碼、更改使用者 ID）
+    Route::prefix('account')->group(function () {
+        Route::post('/email/send-old-code', [AccountController::class, 'sendOldEmailCode']);
+        Route::post('/email/verify-old-code', [AccountController::class, 'verifyOldEmailCode']);
+        Route::post('/email/send-new-code', [AccountController::class, 'sendNewEmailCode']);
+        Route::post('/email/confirm', [AccountController::class, 'confirmEmailChange']);
+        Route::post('/password/send-code', [AccountController::class, 'sendPasswordCode']);
+        Route::post('/password/confirm', [AccountController::class, 'confirmPasswordChange']);
+        Route::post('/username', [AccountController::class, 'updateUsername']);
+    });
+
     // 管理後台專屬路由（需 identity = '管理員'）
     Route::middleware(EnsureAdmin::class)->group(function () {
         Route::get('/admin/items', [ItemController::class, 'adminIndex']);
         Route::post('/admin/items/{id}/approve', [ItemController::class, 'adminApprove']);
         Route::post('/admin/items/{id}/reject', [ItemController::class, 'adminReject']);
-        Route::delete('/items/{id}', [ItemController::class, 'destroy']);
         Route::delete('/admin/items/{id}', [ItemController::class, 'destroy']);
     });
 });

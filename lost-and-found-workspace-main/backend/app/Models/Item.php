@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Item extends Model
 {
     protected $fillable = [
+        'user_id',
         'title',
         'category',
         'description',
@@ -19,6 +20,8 @@ class Item extends Model
         'vlm_fail_count',
         'review_status',
         'manual_review_deadline',
+        'completed_at',
+        'completed_delete_deadline',
         'claim_proof_image',
         'vlm_last_reason',
     ];
@@ -31,8 +34,11 @@ class Item extends Model
     protected function casts(): array
     {
         return [
+            'user_id' => 'integer',
             'vlm_fail_count' => 'integer',
             'manual_review_deadline' => 'datetime',
+            'completed_at' => 'datetime',
+            'completed_delete_deadline' => 'datetime',
         ];
     }
 }

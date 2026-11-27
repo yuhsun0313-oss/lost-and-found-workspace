@@ -1,14 +1,17 @@
 <script setup>
-import { computed, ref, onMounted, reactive } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppState } from '../composables/useAppState'
 import ClaimVerifyModal from '../components/ClaimVerifyModal.vue'
+import AccountSettingsModal from '../components/AccountSettingsModal.vue'
 
 const router = useRouter()
 const {
   API_BASE_URL,
   isDarkMode,
+  authToken,
   isLoggedIn,
+  currentUserId,
   currentUser,
   currentUserEmail,
   userIdentity,
@@ -24,10 +27,31 @@ const selectedItem = ref(null)
 const showVerifyModal = ref(false)
 const verifyingItem = ref(null)
 const pendingReloadHome = ref(false)
+const isRefreshingItems = ref(false)
+
+// 頂部帳號下拉選單 & 基本資料修改彈窗
+const showAccountMenu = ref(false)
+const showAccountSettingsModal = ref(false)
+const accountMenuRef = ref(null)
+
+// 刊登者自行編輯 / 刪除狀態
+const editingItemId = ref(null)
+const deleteConfirmItem = ref(null)
+const isDeletingOwnerItem = ref(false)
+
+function handleOutsideClick(event) {
+  if (showAccountMenu.value && accountMenuRef.value && !accountMenuRef.value.contains(event.target)) {
+    showAccountMenu.value = false
+  }
+}
 
 async function fetchItems() {
   try {
-    const response = await fetch(`${API_BASE_URL}/items`)
+    const headers = { Accept: 'application/json' }
+    if (authToken.value) {
+      headers.Authorization = `Bearer ${authToken.value}`
+    }
+    const response = await fetch(`${API_BASE_URL}/items`, { headers })
     if (response.ok) {
       const data = await response.json()
       items.value = Array.isArray(data) ? data : []
@@ -37,12 +61,46 @@ async function fetchItems() {
   }
 }
 
+async function refreshItems() {
+  if (isRefreshingItems.value) return
+  try {
+    isRefreshingItems.value = true
+    await fetchItems()
+  } finally {
+    isRefreshingItems.value = false
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('click', handleOutsideClick)
   fetchItems()
 })
 
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleOutsideClick)
+})
+
+// 登入狀態恢復或切換帳號後，重新拉取各物品的個人嘗試次數
+watch(
+  () => authToken.value,
+  () => {
+    fetchItems()
+  }
+)
+
 function openDetail(item) {
   selectedItem.value = item
+}
+
+function isItemOwner(item) {
+  if (!isLoggedIn.value || !item) return false
+  if (item.user_id !== null && item.user_id !== undefined && currentUserId.value !== null) {
+    return Number(item.user_id) === Number(currentUserId.value)
+  }
+  if (!item.user_id && item.publisher_email && currentUserEmail.value) {
+    return item.publisher_email.toLowerCase() === currentUserEmail.value.toLowerCase()
+  }
+  return false
 }
 
 function openVerifyClaimModal(item) {
@@ -268,15 +326,46 @@ async function handleAiMatch() {
   }
 }
 
+function getDefaultDateTimeStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function toDateTimeLocal(rawDate) {
+  if (!rawDate) return getDefaultDateTimeStr()
+  const normalized = String(rawDate).replace(' ', 'T').slice(0, 16)
+  return normalized.length === 16 ? normalized : getDefaultDateTimeStr()
+}
+
 function handlePublishClick() {
   if (!isLoggedIn.value) {
     showToast('尚未登入', '刊登物品前請先登入系統。')
     authMode.value = 'login'
     showAuthModal.value = true
   } else {
+    editingItemId.value = null
+    formTitle.value = ''
+    formCategory.value = ''
+    formLocation.value = ''
     formPublisherEmail.value = currentUserEmail.value || ''
+    formDate.value = getDefaultDateTimeStr()
+    formType.value = 'found'
+    formImage.value = ''
     showForm.value = true
   }
+}
+
+function openEditItemModal(item) {
+  editingItemId.value = item.id
+  formTitle.value = item.title || ''
+  formCategory.value = item.category || ''
+  formLocation.value = item.location || ''
+  formPublisherEmail.value = item.publisher_email || currentUserEmail.value || ''
+  formDate.value = toDateTimeLocal(item.date)
+  formType.value = item.type || 'found'
+  formImage.value = item.image || ''
+  selectedItem.value = null
+  showForm.value = true
 }
 
 function openAuth(mode) {
@@ -285,8 +374,19 @@ function openAuth(mode) {
 }
 
 async function handleLogout() {
+  showAccountMenu.value = false
   await logoutSession()
   showToast('已登出', '您已成功登出系統。')
+}
+
+function goToAdminDashboard() {
+  showAccountMenu.value = false
+  router.push('/admin')
+}
+
+function openAccountSettings() {
+  showAccountMenu.value = false
+  showAccountSettingsModal.value = true
 }
 
 async function handleImageUpload(event) {
@@ -319,14 +419,11 @@ const categories = computed(() => {
   return ['全部', ...sortedCategories.slice(0, 9)]
 })
 
-const now = new Date()
-const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-
 const formTitle = ref('')
 const formCategory = ref('')
 const formLocation = ref('')
 const formPublisherEmail = ref('')
-const formDate = ref(formattedDate)
+const formDate = ref(getDefaultDateTimeStr())
 const formType = ref('found')
 const formImage = ref('')
 
@@ -370,12 +467,22 @@ async function submitItem() {
 
   try {
     isSubmittingItem.value = true
-    const response = await fetch(`${API_BASE_URL}/items`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+    const isEditing = editingItemId.value !== null
+    const url = isEditing
+      ? `${API_BASE_URL}/items/${editingItemId.value}`
+      : `${API_BASE_URL}/items`
+
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    }
+    if (authToken.value) {
+      headers.Authorization = `Bearer ${authToken.value}`
+    }
+
+    const response = await fetch(url, {
+      method: isEditing ? 'PUT' : 'POST',
+      headers,
       body: JSON.stringify({
         title: formTitle.value,
         category: formCategory.value,
@@ -390,9 +497,10 @@ async function submitItem() {
     const data = await response.json()
 
     if (response.ok) {
-      showToast('刊登成功', '刊登成功！資料已儲存至資料庫。')
+      showToast(isEditing ? '更新成功' : '刊登成功', isEditing ? '物品資料已更新！' : '刊登成功！資料已儲存至資料庫。')
       await fetchItems()
 
+      editingItemId.value = null
       formTitle.value = ''
       formCategory.value = ''
       formLocation.value = ''
@@ -401,13 +509,41 @@ async function submitItem() {
       formImage.value = ''
       showForm.value = false
     } else {
-      showToast('刊登失敗', data.message || '刊登失敗，請檢查輸入內容！')
+      showToast(isEditing ? '更新失敗' : '刊登失敗', data.message || '操作失敗，請檢查輸入內容！')
     }
   } catch (error) {
-    console.error('刊登錯誤：', error)
+    console.error('刊登／編輯錯誤：', error)
     showToast('連線錯誤', '無法連線到伺服器，請確認後端是否正在運行！')
   } finally {
     isSubmittingItem.value = false
+  }
+}
+
+async function confirmOwnerDelete() {
+  if (!deleteConfirmItem.value || isDeletingOwnerItem.value) return
+  try {
+    isDeletingOwnerItem.value = true
+    const response = await fetch(`${API_BASE_URL}/items/${deleteConfirmItem.value.id}`, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${authToken.value}`,
+      },
+    })
+    const data = await response.json()
+    if (response.ok && data.success) {
+      deleteConfirmItem.value = null
+      selectedItem.value = null
+      await fetchItems()
+      showToast('已刪除', '您刊登的物品已成功刪除。')
+    } else {
+      showToast('刪除失敗', data.message || '無法刪除此物品。')
+    }
+  } catch (error) {
+    console.error('刪除錯誤：', error)
+    showToast('連線錯誤', '無法連線到伺服器，請稍後再試！')
+  } finally {
+    isDeletingOwnerItem.value = false
   }
 }
 </script>
@@ -442,34 +578,73 @@ async function submitItem() {
             </button>
           </template>
           <template v-else>
-            <span
-              class="text-xs font-bold sm:text-sm max-w-[120px] sm:max-w-[180px] truncate"
-              :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'"
-            >
-              👤 {{ currentUser }}
-            </span>
-            <span
-              class="hidden sm:inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold"
-              :class="isAdmin ? (isDarkMode ? 'bg-[#ff9000]/20 text-[#ff9000]' : 'bg-blue-100 text-[#1e3a8a]') : (isDarkMode ? 'bg-[#222222] text-[#aaaaaa]' : 'bg-gray-100 text-gray-600')"
-            >
-              {{ userIdentity }}
-            </span>
-            <button
-              v-if="isAdmin"
-              type="button"
-              class="rounded-xl px-3 py-1.5 text-xs font-bold transition sm:px-3.5 sm:py-2 sm:text-sm"
-              :class="isDarkMode ? 'bg-[#ff9000]/20 text-[#ff9000] border border-[#ff9000]/40 hover:bg-[#ff9000] hover:text-black' : 'bg-blue-50 text-[#1e3a8a] border border-blue-200 hover:bg-[#1e3a8a] hover:text-white'"
-              @click="router.push('/admin')"
-            >
-              🛡️ 管理後台
-            </button>
-            <button
-              class="rounded-xl px-3 py-1.5 text-xs font-bold transition sm:px-4 sm:py-2 sm:text-sm"
-              :class="isDarkMode ? 'bg-[#222222] text-[#aaaaaa] hover:bg-[#333333]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
-              @click="handleLogout"
-            >
-              登出
-            </button>
+            <!-- 收合式帳號選單：點擊 👤 使用者 ID 展開選單 -->
+            <div ref="accountMenuRef" class="relative">
+              <button
+                type="button"
+                class="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition sm:px-3.5 sm:py-2 sm:text-sm cursor-pointer"
+                :class="isDarkMode ? 'bg-[#1e1e1e] text-[#ff9000] hover:bg-[#2a2a2a]' : 'bg-blue-50 text-[#1e3a8a] hover:bg-blue-100'"
+                @click.stop="showAccountMenu = !showAccountMenu"
+              >
+                <span>👤</span>
+                <span class="max-w-[90px] sm:max-w-[140px] truncate">{{ currentUser }}</span>
+                <span
+                  class="hidden sm:inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
+                  :class="isAdmin ? (isDarkMode ? 'bg-[#ff9000]/20 text-[#ff9000]' : 'bg-blue-200/70 text-[#1e3a8a]') : (isDarkMode ? 'bg-[#2a2a2a] text-[#aaaaaa]' : 'bg-white text-gray-600')"
+                >
+                  {{ userIdentity }}
+                </span>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 opacity-75">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                </svg>
+              </button>
+
+              <div
+                v-if="showAccountMenu"
+                class="absolute right-0 mt-2 w-56 rounded-2xl shadow-2xl border overflow-hidden z-50 transition-all"
+                :class="isDarkMode ? 'bg-[#181818] border-[#2c2c2c] text-[#ffffff]' : 'bg-white border-gray-200 text-[#0f172a]'"
+              >
+                <div class="px-4 py-3 border-b text-xs" :class="isDarkMode ? 'border-[#2c2c2c]' : 'border-gray-100'">
+                  <p class="font-black truncate">{{ currentUser }}</p>
+                  <p class="truncate opacity-65 mt-0.5">{{ currentUserEmail }}</p>
+                </div>
+
+                <div class="py-1.5">
+                  <button
+                    v-if="isAdmin"
+                    type="button"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left text-xs sm:text-sm font-semibold transition"
+                    :class="isDarkMode ? 'hover:bg-[#262626] text-[#ff9000]' : 'hover:bg-blue-50 text-[#1e3a8a]'"
+                    @click="goToAdminDashboard"
+                  >
+                    <span>🛡️</span>
+                    <span>管理後台</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left text-xs sm:text-sm font-semibold transition"
+                    :class="isDarkMode ? 'hover:bg-[#262626]' : 'hover:bg-gray-100'"
+                    @click="openAccountSettings"
+                  >
+                    <span>⚙️</span>
+                    <span>更改基本資料</span>
+                  </button>
+                </div>
+
+                <div class="border-t py-1.5" :class="isDarkMode ? 'border-[#2c2c2c]' : 'border-gray-100'">
+                  <button
+                    type="button"
+                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left text-xs sm:text-sm font-semibold transition text-red-500"
+                    :class="isDarkMode ? 'hover:bg-[#262626]' : 'hover:bg-red-50'"
+                    @click="handleLogout"
+                  >
+                    <span>🚪</span>
+                    <span>登出</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </template>
 
           <button
@@ -624,12 +799,23 @@ async function submitItem() {
 
       <!-- 失物網格清單 -->
       <section class="mt-8">
-        <div class="mb-5 flex items-end justify-between">
+        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 class="text-xl font-black sm:text-2xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-900'">校園失物列表</h2>
             <p class="mt-1 text-xs sm:text-sm" :class="isDarkMode ? 'text-[#666666]' : 'text-gray-500'">找找看，有沒有你正在尋找的物品。</p>
           </div>
-          <span class="text-xs sm:text-sm" :class="isDarkMode ? 'text-[#666666]' : 'text-gray-500'">{{ filteredItems.length }} 筆紀錄</span>
+          <div class="flex items-center gap-3">
+            <span class="text-xs sm:text-sm" :class="isDarkMode ? 'text-[#666666]' : 'text-gray-500'">{{ filteredItems.length }} 筆紀錄</span>
+            <button
+              type="button"
+              :disabled="isRefreshingItems"
+              class="rounded-xl px-3.5 py-1.5 text-xs font-bold transition sm:px-4 sm:py-2 sm:text-sm disabled:opacity-50 cursor-pointer"
+              :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
+              @click="refreshItems"
+            >
+              {{ isRefreshingItems ? '更新中...' : '🔄 重新整理' }}
+            </button>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
@@ -661,7 +847,16 @@ async function submitItem() {
               </div>
 
               <div class="p-4 sm:p-5 space-y-2">
-                <div class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">[{{ item.category }}]</div>
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">[{{ item.category }}]</span>
+                  <span
+                    v-if="isItemOwner(item)"
+                    class="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    :class="isDarkMode ? 'bg-[#222222] text-[#ff9000]' : 'bg-blue-50 text-[#1e3a8a]'"
+                  >
+                    我的刊登
+                  </span>
+                </div>
                 <h3 class="text-base font-bold truncate sm:text-lg" :class="isDarkMode ? 'text-white' : 'text-gray-900'">{{ item.title }}</h3>
 
                 <div class="space-y-1.5 text-sm pt-1" :class="isDarkMode ? 'text-gray-300' : 'text-gray-600'">
@@ -773,6 +968,28 @@ async function submitItem() {
           ⏳ 目前正由管理員「人工辨識」審核中（{{ formatRemainingTime(selectedItem.manual_review_deadline) }}）。
         </div>
 
+        <!-- 刊登者自行編輯／刪除控制列（刊登中物品） -->
+        <div
+          v-if="isItemOwner(selectedItem) && selectedItem.review_status !== 'completed'"
+          class="mb-3 grid grid-cols-2 gap-2.5"
+        >
+          <button
+            type="button"
+            class="rounded-xl py-2 text-xs font-bold transition sm:py-2.5 sm:text-sm"
+            :class="isDarkMode ? 'bg-[#222222] text-[#ff9000] hover:bg-[#333333]' : 'bg-blue-50 text-[#1e3a8a] hover:bg-blue-100'"
+            @click="openEditItemModal(selectedItem)"
+          >
+            ✏️ 編輯物品
+          </button>
+          <button
+            type="button"
+            class="rounded-xl py-2 text-xs font-bold transition sm:py-2.5 sm:text-sm bg-red-600/15 text-red-500 hover:bg-red-600 hover:text-white"
+            @click="deleteConfirmItem = selectedItem"
+          >
+            🗑️ 刪除物品
+          </button>
+        </div>
+
         <button
           type="button"
           :disabled="selectedItem.review_status === 'needs_manual_review'"
@@ -782,6 +999,41 @@ async function submitItem() {
         >
           {{ selectedItem.review_status === 'needs_manual_review' ? '人工辨識審核中' : '已找到，驗證並刪除' }}
         </button>
+      </div>
+    </div>
+
+    <!-- 刊登者刪除確認對話框 -->
+    <div
+      v-if="deleteConfirmItem"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      @click.self="deleteConfirmItem = null"
+    >
+      <div
+        class="w-full max-w-sm rounded-2xl p-6 text-center transition-colors duration-300"
+        :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white text-gray-900 shadow-2xl'"
+      >
+        <h3 class="text-lg font-black mb-2 text-red-500">確認刪除刊登物品？</h3>
+        <p class="text-xs sm:text-sm mb-5 opacity-80">
+          確定要自行刪除「{{ deleteConfirmItem.title }}」嗎？刪除後將無法復原。
+        </p>
+        <div class="flex gap-3">
+          <button
+            type="button"
+            :disabled="isDeletingOwnerItem"
+            class="flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+            @click="confirmOwnerDelete"
+          >
+            {{ isDeletingOwnerItem ? '刪除中...' : '確認刪除' }}
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold"
+            :class="isDarkMode ? 'bg-[#222222] text-[#aaaaaa]' : 'bg-gray-200 text-gray-700'"
+            @click="deleteConfirmItem = null"
+          >
+            取消
+          </button>
+        </div>
       </div>
     </div>
 
@@ -795,7 +1047,14 @@ async function submitItem() {
       @toast="showToast"
     />
 
-    <!-- 刊登表單視窗 -->
+    <!-- 帳號基本資料修改彈窗 -->
+    <AccountSettingsModal
+      :show="showAccountSettingsModal"
+      @close="showAccountSettingsModal = false"
+      @toast="showToast"
+    />
+
+    <!-- 刊登 / 編輯表單視窗 -->
     <div
       v-if="showForm"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -805,8 +1064,12 @@ async function submitItem() {
         class="w-full max-w-lg rounded-2xl p-5 max-h-[90vh] overflow-y-auto sm:p-6 transition-colors duration-300"
         :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white text-gray-900 shadow-2xl'"
       >
-        <h2 class="text-lg font-black sm:text-xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-900'">刊登失物 / 拾獲物品</h2>
-        <p class="mt-1 text-xs sm:text-sm" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-500'">填寫詳細資訊，讓失主或拾獲人更容易找到。</p>
+        <h2 class="text-lg font-black sm:text-xl" :class="isDarkMode ? 'text-[#ffffff]' : 'text-gray-900'">
+          {{ editingItemId ? '編輯刊登物品' : '刊登失物 / 拾獲物品' }}
+        </h2>
+        <p class="mt-1 text-xs sm:text-sm" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-500'">
+          填寫詳細資訊並附上物品圖片，讓失主或拾獲人更容易比對與聯繫。
+        </p>
 
         <div class="mt-5 space-y-4">
           <div>
@@ -847,7 +1110,7 @@ async function submitItem() {
           </div>
 
           <div>
-            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">分類</label>
+            <label class="block text-xs font-bold mb-1" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">分類 *</label>
             <select
               v-model="formCategory"
               required
@@ -933,7 +1196,7 @@ async function submitItem() {
             :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="submitItem"
           >
-            {{ isSubmittingItem ? '送出中...' : '確認送出' }}
+            {{ isSubmittingItem ? '送出中...' : editingItemId ? '儲存變更' : '確認送出' }}
           </button>
 
           <button

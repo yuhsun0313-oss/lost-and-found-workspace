@@ -6,7 +6,7 @@ import ClaimVerifyModal from '../components/ClaimVerifyModal.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { API_BASE_URL, isDarkMode, formatRemainingTime } = useAppState()
+const { API_BASE_URL, isDarkMode, authToken, formatRemainingTime } = useAppState()
 
 const itemId = route.params.id
 const item = ref(null)
@@ -37,8 +37,12 @@ function closeToast() {
 async function fetchItem() {
   try {
     isLoading.value = true
+    const headers = { Accept: 'application/json' }
+    if (authToken.value) {
+      headers.Authorization = `Bearer ${authToken.value}`
+    }
     const response = await fetch(`${API_BASE_URL}/items/${itemId}`, {
-      headers: { Accept: 'application/json' },
+      headers,
     })
     const data = await response.json()
     if (response.ok && data.success) {
