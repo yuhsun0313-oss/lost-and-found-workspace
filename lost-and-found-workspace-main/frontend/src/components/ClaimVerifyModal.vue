@@ -42,7 +42,7 @@ async function handleProofUpload(event) {
   }
 
   try {
-    proofPhotoDataUrl.value = await compressImageToDataUrl(file, 1024, 0.82)
+    proofPhotoDataUrl.value = await compressImageToDataUrl(file, 800, 0.8)
   } catch {
     emit('toast', '讀取失敗', '無法讀取您選擇的圖片，請重新選擇！')
   }

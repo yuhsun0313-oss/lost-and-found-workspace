@@ -940,6 +940,9 @@ class ItemController extends Controller
         return $mae <= 10.0;
     }
 
+    /**
+     * 將圖片等比縮放至最長邊不超過 800px，透明背景 PNG 鋪上白色底色後轉存 JPEG (品質 80) Base64
+     */
     private function normalizeImageBase64ForVlm(string $rawBase64): string
     {
         if (!function_exists('imagecreatefromstring')) {
@@ -958,18 +961,19 @@ class ItemController extends Controller
 
         $w = imagesx($src);
         $h = imagesy($src);
-        $maxDim = 768;
+        $maxDim = 800;
         $scale = max($w, $h) > $maxDim ? ($maxDim / max($w, $h)) : 1.0;
         $newW = max(1, (int) round($w * $scale));
         $newH = max(1, (int) round($h * $scale));
 
         $dst = imagecreatetruecolor($newW, $newH);
+        imagealphablending($dst, true);
         $white = imagecolorallocate($dst, 255, 255, 255);
         imagefill($dst, 0, 0, $white);
         imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $w, $h);
 
         ob_start();
-        imagejpeg($dst, null, 85);
+        imagejpeg($dst, null, 80);
         $jpegBytes = ob_get_clean();
 
         imagedestroy($src);
@@ -1078,41 +1082,24 @@ class ItemController extends Controller
             : [$uploadedBase64];
 
         $imageInstruction = $originalBase64 !== null
-            ? <<<'INST'
-你會收到兩張獨立的圖片：
-- 第 1 張是資料庫登錄的「原失物照片」。
-- 第 2 張是申請人現場拍攝上傳的「現場驗證照片」。
-
-請嚴格遵守「先獨立觀察、再進行比對」的兩階段原則（適用於任何一般通用物品）：
-1. 【嚴禁腦補與跨圖誘導】：觀察第 2 張「現場驗證照片」時，必須完全忽略第 1 張照片內容以及資料庫文字描述（品名、分類、說明），只能如實寫出第 2 張照片中肉眼實際看到的畫面。絕對不可把第 1 張的物體或文字標題套用到第 2 張上！
-2. 【無效畫面一律判否】：只要第 2 張現場驗證照片為「全黑、全白、純色、過暗、嚴重模糊、空白或看不出任何明確物體」，必須在 image2_observation 如實寫出該現象，且必須直接判定 "is_match": false、"confidence": 0！
-3. 【嚴格實物比對標準】：唯有第 1 張與第 2 張圖片各自都能清楚辨識出具體物體，且兩者的「物品種類（如水壺、耳機、鑰匙、雨傘、書包等一般通用物品）」、「主色系」與「主要外觀特徵」確實相符時，才可將 is_match 設為 true 並給予 70~100 的整數 confidence；若物品種類不同、顏色明顯不同、或第 2 張根本看不出與第 1 張相同的物體，必須判定為 false。
-INST
-            : <<<'INST'
-資料庫原失物未附帶圖片，你會收到 1 張申請人現場拍攝的「現場驗證照片」（作為第 2 張待審核圖）。
-請嚴格遵守以下審核原則（適用於任何一般通用物品）：
-1. 【嚴禁文字誘導腦補】：觀察現場驗證照片（image2_observation）時，必須只根據畫面實際可見的物體如實描述，不可因資料庫文字描述而憑空腦補物體。
-2. 【無效畫面一律判否】：若現場照片為「全黑、全白、純色、過暗、嚴重模糊、空白或看不出明確物體」，必須如實寫入 image2_observation，且直接判定 "is_match": false、"confidence": 0！
-3. 【嚴格比對】：唯有畫面清楚拍到明確物品，且種類與外觀特徵與失物文字資訊相符時，才可設為 true 並給予 70~100 的整數 confidence。
-INST;
+            ? "輸入為 2 張圖：第 1 張為「原失物圖」，第 2 張為「現場驗證圖」。\n"
+              . "規則（適用任何一般通用物品）：\n"
+              . "1. 先獨立觀察再比對：觀察第 2 張圖時嚴禁受第 1 張圖或文字資訊誘導腦補，只能如實描述第 2 張肉眼可見畫面。\n"
+              . "2. 無效畫面必判否：若第 2 張為全黑、全白、純色、過暗、嚴重模糊或看不出明確物體，image2_observation 須如實寫出，且 is_match 必為 false、confidence 必為 0。\n"
+              . "3. 實物一致才通過：僅當兩張圖皆清楚拍到物體，且物品種類、主色系與主要外觀特徵相符時，才可設 is_match: true（confidence 70~100）。"
+            : "無原失物圖，輸入為 1 張「現場驗證圖」。觀察 image2_observation 嚴禁受文字誘導腦補；若為全黑、全白、純色、過暗、嚴重模糊或看不出明確物體，is_match 必為 false、confidence 必為 0；唯有清楚拍到與失物文字相符之物品才可設 true（confidence 70~100）。";
 
         $prompt = <<<PROMPT
-你是極度嚴謹、客觀公正的「校園失物招領系統」VLM 視覺審核專家。
-{$imageInstruction}
+你是校園失物招領 VLM 視覺審核專家。{$imageInstruction}
+失物文字參考（僅供比對階段參考，不可腦補第 2 張畫面）：品名「{$item->title}」、分類「{$item->category}」、說明「{$item->description}」。
 
-資料庫登錄失物文字參考資訊（僅供最後比對階段參考，不可用於腦補第 2 張照片畫面）：
-- 物品名稱：{$item->title}
-- 物品分類：{$item->category}
-- 地點：{$item->location}
-- 補充說明：{$item->description}
-
-請嚴格按照下列 JSON 欄位順序輸出純 JSON（不得包含 markdown 標記或額外說明文字，先獨立填寫 image1_observation 與 image2_observation，最後再給出判斷結果與 0~100 整數 confidence）：
+請嚴格依序輸出純 JSON（禁止 markdown）：
 {
-  "image1_observation": "客觀描述第 1 張圖實際看到的物品種類、顏色與外觀（若無第 1 張圖請填：無原失物照片）",
-  "image2_observation": "嚴格只描述第 2 張圖實際看到的畫面；若全黑、全白、純色、過暗、嚴重模糊或看不出明確物體，請如實寫出",
+  "image1_observation": "第 1 張圖實際物體與特徵（無圖則填：無原失物照片）",
+  "image2_observation": "嚴格只寫第 2 張圖實際畫面；若全黑/全白/純色/過暗/模糊/看不出物體請如實寫出",
   "is_match": false,
   "confidence": 0,
-  "reason": "使用繁體中文對比兩張圖的觀察結果，說明相符或不相符的具體依據"
+  "reason": "繁體中文說明比對依據"
 }
 PROMPT;
 
@@ -1131,8 +1118,9 @@ PROMPT;
                 'stream' => false,
                 'format' => 'json',
                 'options' => [
-                    'temperature' => 0.0,
-                    'num_predict' => 640,
+                    'temperature' => 0.1,
+                    'num_ctx' => 8192,
+                    'num_predict' => 512,
                 ],
             ]);
 
@@ -1149,8 +1137,9 @@ PROMPT;
                     'stream' => false,
                     'format' => 'json',
                     'options' => [
-                        'temperature' => 0.0,
-                        'num_predict' => 640,
+                        'temperature' => 0.1,
+                        'num_ctx' => 8192,
+                        'num_predict' => 512,
                     ],
                 ]);
 

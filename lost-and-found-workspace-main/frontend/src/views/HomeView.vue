@@ -400,7 +400,7 @@ async function handleImageUpload(event) {
   }
 
   try {
-    formImage.value = await compressImageToDataUrl(file, 1024, 0.82)
+    formImage.value = await compressImageToDataUrl(file, 800, 0.8)
   } catch {
     showToast('圖片讀取失敗', '請重新選擇圖片檔案！')
   }
