@@ -119,7 +119,6 @@ async function handleClaimEscalated() {
   await fetchItems()
 }
 
-const keyword = ref('')
 const category = ref('全部')
 const showForm = ref(false)
 const showAuthModal = ref(false)
@@ -429,13 +428,7 @@ const formImage = ref('')
 
 const filteredItems = computed(() => {
   return items.value.filter((item) => {
-    const matchesKeyword = `${item.title} ${item.location}`
-      .toLowerCase()
-      .includes(keyword.value.toLowerCase())
-
-    const matchesCategory = category.value === '全部' || item.category === category.value
-
-    return matchesKeyword && matchesCategory
+    return category.value === '全部' || item.category === category.value
   })
 })
 
@@ -659,7 +652,7 @@ async function confirmOwnerDelete() {
     </header>
 
     <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
-      <!-- 主 Banner 區塊 -->
+      <!-- 主 Banner 區塊（整合單一 AI 智慧搜尋欄） -->
       <section
         class="rounded-3xl px-6 py-8 sm:px-12 sm:py-12 transition-colors duration-300"
         :class="isDarkMode ? 'bg-[#121212] text-white' : 'bg-white shadow-xl text-gray-900 border border-gray-100'"
@@ -672,44 +665,14 @@ async function confirmOwnerDelete() {
           <span :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">讓我們幫你找回。</span>
         </h1>
         <p class="mt-3 max-w-lg text-xs leading-6 sm:mt-4 sm:text-sm sm:leading-7" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">
-          搜尋校園失物，或刊登拾獲物品。透過 AI 智慧比對，推薦可能的失物配對。
+          輸入您遺失物品的特徵與地點描述，透過 AI 智慧語意比對，自動推薦最有可能的失物配對。
         </p>
 
         <div class="mt-6 flex max-w-2xl flex-col gap-2.5 sm:mt-7 sm:flex-row sm:gap-3">
           <input
-            v-model="keyword"
-            type="text"
-            placeholder="搜尋耳機、水壺、圖書館..."
-            class="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm outline-none sm:py-3 transition-colors duration-300"
-            :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#555555]' : 'bg-gray-100 text-[#0f172a] placeholder-gray-400 border border-gray-200'"
-          />
-          <button
-            class="rounded-xl px-6 py-2.5 text-sm font-bold transition sm:py-3"
-            :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
-            @click="category = '全部'"
-          >
-            搜尋物品
-          </button>
-        </div>
-      </section>
-
-      <!-- AI 智慧尋物助手區塊 -->
-      <section
-        class="mt-6 rounded-3xl px-6 py-6 sm:px-8 sm:py-8 transition-colors duration-300"
-        :class="isDarkMode ? 'bg-[#121212]' : 'bg-white shadow-xl border border-gray-100'"
-      >
-        <h2 class="text-base font-black sm:text-lg mb-1 transition-colors duration-300" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
-          🤖 AI 智慧尋物助手
-        </h2>
-        <p class="text-xs sm:text-sm mb-4 transition-colors duration-300" :class="isDarkMode ? 'text-[#888888]' : 'text-gray-600'">
-          輸入您遺失物品的特徵與地點描述，AI 將進行品牌型號聯想、校園地點同義擴展與合理性評估！
-        </p>
-
-        <div class="flex flex-col gap-2.5 sm:flex-row sm:gap-3 max-w-2xl">
-          <input
             v-model="aiQuery"
             type="text"
-            placeholder="例如：在綜三502教室弄丟手機..."
+            placeholder="例如：在操場弄丟了鞋子、綜三502教室不見手機..."
             class="min-w-0 flex-1 rounded-xl px-4 py-2.5 text-sm outline-none sm:py-3 transition-colors duration-300"
             :class="isDarkMode ? 'bg-[#000000] text-[#ffffff] placeholder-[#555555]' : 'bg-gray-100 text-[#0f172a] placeholder-gray-400 border border-gray-200'"
             @keyup.enter="handleAiMatch"
@@ -717,7 +680,7 @@ async function confirmOwnerDelete() {
           <button
             type="button"
             :disabled="isAiSearching"
-            class="rounded-xl px-6 py-2.5 text-sm font-bold transition sm:py-3 disabled:opacity-50"
+            class="rounded-xl px-6 py-2.5 text-sm font-bold transition sm:py-3 disabled:opacity-50 cursor-pointer"
             :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
             @click="handleAiMatch"
           >
@@ -727,17 +690,26 @@ async function confirmOwnerDelete() {
 
         <div
           v-if="!isAiReasonable && aiReasonNotice"
-          class="mt-4 rounded-2xl p-4 text-xs sm:text-sm border"
+          class="mt-5 rounded-2xl p-4 text-xs sm:text-sm border"
           :class="isDarkMode ? 'bg-[#2a0e12] border-[#7f1d1d] text-[#fca5a5]' : 'bg-red-50 border-red-200 text-red-700'"
         >
           ⚠️ {{ aiReasonNotice }}
         </div>
 
         <!-- AI 推薦比對結果區塊 -->
-        <div v-if="aiMatches.length > 0" class="mt-5 space-y-3">
-          <p class="text-xs font-bold" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
-            ✨ AI 推薦的可能匹配項目：
-          </p>
+        <div v-if="aiMatches.length > 0" class="mt-6 space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-bold sm:text-sm" :class="isDarkMode ? 'text-[#ff9000]' : 'text-[#1e3a8a]'">
+              ✨ AI 推薦的可能匹配項目（共 {{ aiMatches.length }} 筆）：
+            </p>
+            <button
+              type="button"
+              class="text-xs font-bold opacity-70 hover:opacity-100 transition cursor-pointer"
+              @click="aiMatches = []"
+            >
+              ✕ 清除結果
+            </button>
+          </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div
               v-for="item in aiMatches"
