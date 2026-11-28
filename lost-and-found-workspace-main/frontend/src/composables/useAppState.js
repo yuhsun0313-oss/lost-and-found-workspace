@@ -106,18 +106,36 @@ function compressImageToDataUrl(file, maxWidth = 1024, quality = 0.82) {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('讀取圖片失敗'))
     reader.onload = (event) => {
+      const dataUrl = event.target?.result
+      if (typeof dataUrl !== 'string' || !dataUrl) {
+        reject(new Error('圖片內容為空'))
+        return
+      }
       const img = new Image()
-      img.onerror = () => resolve(event.target.result)
+      img.onerror = () => resolve(dataUrl)
       img.onload = () => {
-        const scale = img.width > maxWidth ? maxWidth / img.width : 1
+        const srcW = img.naturalWidth || img.width
+        const srcH = img.naturalHeight || img.height
+        if (!srcW || !srcH) {
+          resolve(dataUrl)
+          return
+        }
+        const scale = srcW > maxWidth ? maxWidth / srcW : 1
         const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * scale)
-        canvas.height = Math.round(img.height * scale)
+        canvas.width = Math.max(1, Math.round(srcW * scale))
+        canvas.height = Math.max(1, Math.round(srcH * scale))
         const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(dataUrl)
+          return
+        }
+        // 先填滿白色背景，避免透明背景 PNG 轉存 JPEG 時變為全黑畫面
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         resolve(canvas.toDataURL('image/jpeg', quality))
       }
-      img.src = event.target.result
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   })

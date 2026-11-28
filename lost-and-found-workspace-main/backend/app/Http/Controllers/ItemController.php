@@ -428,8 +428,19 @@ class ItemController extends Controller
 
         $originalBase64 = $this->resolveImageToBase64($item->image);
 
-        if ($originalBase64 !== null && $this->isSameOrNearIdenticalImage($originalBase64, $uploadedBase64)) {
+        // 先在程式層檢測上傳圖是否為全黑、全白、純色等無效畫面，避免浪費 VLM 推論或誤判
+        if ($this->isBlankOrPitchDarkImage($uploadedBase64)) {
             $vlmResult = [
+                'image1_observation' => '',
+                'image2_observation' => '畫面為全黑、全白、純色或極度過暗，無法辨識任何明確物體。',
+                'is_match' => false,
+                'confidence' => 0,
+                'reason' => '現場驗證照片為全黑、純色或過暗無效畫面，無法辨識出任何物品。',
+            ];
+        } elseif ($originalBase64 !== null && $this->isSameOrNearIdenticalImage($originalBase64, $uploadedBase64)) {
+            $vlmResult = [
+                'image1_observation' => '與第 2 張上傳圖片為同一張有效影像。',
+                'image2_observation' => '與第 1 張原失物照片影像特徵完全一致。',
                 'is_match' => true,
                 'confidence' => 100,
                 'reason' => '比對確認上傳照片與原失物照片為同一張影像或特徵完全吻合。',
@@ -447,8 +458,23 @@ class ItemController extends Controller
             ], 503);
         }
 
-        $isMatch = $vlmResult['is_match'] && $vlmResult['confidence'] >= 50;
+        $image2Observation = trim((string) ($vlmResult['image2_observation'] ?? ''));
+        $hasInvalidObservation = $this->hasInvalidObservationKeywords($image2Observation);
+
+        $isMatch = $vlmResult['is_match']
+            && $vlmResult['confidence'] >= 70
+            && !$hasInvalidObservation;
+
         $vlmReason = $vlmResult['reason'];
+        if ($vlmResult['is_match'] && $hasInvalidObservation) {
+            $isMatch = false;
+            $vlmReason = "系統防呆攔截：現場照片無效或無法辨識（{$image2Observation}），判定為不符合。";
+            Log::warning("VLM 幻覺防呆攔截 (Item #{$item->id})", [
+                'raw_is_match' => $vlmResult['is_match'],
+                'confidence' => $vlmResult['confidence'],
+                'image2_observation' => $image2Observation,
+            ]);
+        }
 
         if ($isMatch) {
             $now = Carbon::now();
@@ -952,6 +978,96 @@ class ItemController extends Controller
         return !empty($jpegBytes) ? base64_encode($jpegBytes) : $rawBase64;
     }
 
+    /**
+     * 檢測上傳圖片是否為全黑、全白、純色或極度過暗之無效圖片
+     */
+    private function isBlankOrPitchDarkImage(string $rawBase64): bool
+    {
+        if (!function_exists('imagecreatefromstring')) {
+            return false;
+        }
+
+        $bytes = base64_decode($rawBase64, true);
+        if ($bytes === false) {
+            return false;
+        }
+
+        $img = @imagecreatefromstring($bytes);
+        if (!$img) {
+            return false;
+        }
+
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $size = 32;
+        $thumb = imagecreatetruecolor($size, $size);
+        imagecopyresampled($thumb, $img, 0, 0, 0, 0, $size, $size, $w, $h);
+
+        $lums = [];
+        $maxLum = 0.0;
+        for ($y = 0; $y < $size; $y++) {
+            for ($x = 0; $x < $size; $x++) {
+                $rgb = imagecolorat($thumb, $x, $y);
+                $r = ($rgb >> 16) & 0xFF;
+                $g = ($rgb >> 8) & 0xFF;
+                $b = $rgb & 0xFF;
+                $lum = 0.299 * $r + 0.587 * $g + 0.114 * $b;
+                $lums[] = $lum;
+                if ($lum > $maxLum) {
+                    $maxLum = $lum;
+                }
+            }
+        }
+
+        imagedestroy($img);
+        imagedestroy($thumb);
+
+        $n = count($lums);
+        if ($n === 0) {
+            return true;
+        }
+        $mean = array_sum($lums) / $n;
+        $variance = 0.0;
+        foreach ($lums as $lum) {
+            $variance += ($lum - $mean) ** 2;
+        }
+        $stdDev = sqrt($variance / $n);
+
+        // 純色（幾乎無任何紋理變化）或整張幾乎全黑無可見像素
+        return $stdDev < 3.5 || $maxLum < 18.0;
+    }
+
+    /**
+     * 檢查 VLM 對第 2 張現場驗證圖的客觀描述是否出現無效畫面關鍵字（雙重防呆過濾）
+     */
+    private function hasInvalidObservationKeywords(string $observation): bool
+    {
+        if ($observation === '') {
+            return true;
+        }
+
+        // 先移除「不是全黑」「沒有模糊」等否定確認詞，避免誤傷正常清晰照片
+        $sanitized = preg_replace('/(不是|並非|沒有|無|非)(全黑|全白|純色|模糊|過暗)/u', '', $observation) ?? $observation;
+        $lower = mb_strtolower($sanitized);
+
+        $invalidKeywords = [
+            '全黑', '純黑', '黑屏', '全白', '純白', '純色', '單色',
+            '模糊', '過暗', '太暗', '昏暗', '極暗',
+            '看不出', '看不清', '無法辨識', '無法識別', '無法判斷',
+            '無物品', '沒有物品', '無明確物體', '沒有明確物體', '沒有物體',
+            '空白', '無畫面', '無內容', '無任何物體', '沒有任何物體',
+            'pitch black', 'all black', 'all white', 'solid color', 'blank', 'too dark', 'blurry', 'no object', 'unrecognizable',
+        ];
+
+        foreach ($invalidKeywords as $kw) {
+            if (mb_strpos($lower, $kw) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function callOllamaVlm(Item $item, string $uploadedBase64, ?string $originalBase64): ?array
     {
         $ollamaUrl = rtrim(env('OLLAMA_URL', 'https://tapping-carol-engaging.ngrok-free.dev'), '/');
@@ -962,24 +1078,41 @@ class ItemController extends Controller
             : [$uploadedBase64];
 
         $imageInstruction = $originalBase64 !== null
-            ? '你會收到兩張圖片：第 1 張是資料庫登錄的「原失物照片」，第 2 張是認領／尋獲人提交的「現場照片」。請比對兩張圖片中的核心物品是否為同一類或同一件物品。若兩張照片為同一張圖、翻拍截圖，或物品的品項種類、主色調與關鍵外觀特徵相符（即使角度、距離、光線或背景不同），請務必判定為 is_match: true 並給予 75~100 的整數 confidence！僅在兩張圖明顯為完全不同種類或截然不同顏色的物品時，才判定為 is_match: false。'
-            : '資料庫原失物未附帶圖片，你會收到 1 張現場照片。請根據以下失物文字資訊，判斷照片中的物品是否符合該失物描述。';
+            ? <<<'INST'
+你會收到兩張獨立的圖片：
+- 第 1 張是資料庫登錄的「原失物照片」。
+- 第 2 張是申請人現場拍攝上傳的「現場驗證照片」。
+
+請嚴格遵守「先獨立觀察、再進行比對」的兩階段原則（適用於任何一般通用物品）：
+1. 【嚴禁腦補與跨圖誘導】：觀察第 2 張「現場驗證照片」時，必須完全忽略第 1 張照片內容以及資料庫文字描述（品名、分類、說明），只能如實寫出第 2 張照片中肉眼實際看到的畫面。絕對不可把第 1 張的物體或文字標題套用到第 2 張上！
+2. 【無效畫面一律判否】：只要第 2 張現場驗證照片為「全黑、全白、純色、過暗、嚴重模糊、空白或看不出任何明確物體」，必須在 image2_observation 如實寫出該現象，且必須直接判定 "is_match": false、"confidence": 0！
+3. 【嚴格實物比對標準】：唯有第 1 張與第 2 張圖片各自都能清楚辨識出具體物體，且兩者的「物品種類（如水壺、耳機、鑰匙、雨傘、書包等一般通用物品）」、「主色系」與「主要外觀特徵」確實相符時，才可將 is_match 設為 true 並給予 70~100 的整數 confidence；若物品種類不同、顏色明顯不同、或第 2 張根本看不出與第 1 張相同的物體，必須判定為 false。
+INST
+            : <<<'INST'
+資料庫原失物未附帶圖片，你會收到 1 張申請人現場拍攝的「現場驗證照片」（作為第 2 張待審核圖）。
+請嚴格遵守以下審核原則（適用於任何一般通用物品）：
+1. 【嚴禁文字誘導腦補】：觀察現場驗證照片（image2_observation）時，必須只根據畫面實際可見的物體如實描述，不可因資料庫文字描述而憑空腦補物體。
+2. 【無效畫面一律判否】：若現場照片為「全黑、全白、純色、過暗、嚴重模糊、空白或看不出明確物體」，必須如實寫入 image2_observation，且直接判定 "is_match": false、"confidence": 0！
+3. 【嚴格比對】：唯有畫面清楚拍到明確物品，且種類與外觀特徵與失物文字資訊相符時，才可設為 true 並給予 70~100 的整數 confidence。
+INST;
 
         $prompt = <<<PROMPT
-你是校園失物招領系統的 VLM 視覺審核專家。
+你是極度嚴謹、客觀公正的「校園失物招領系統」VLM 視覺審核專家。
 {$imageInstruction}
 
-資料庫登錄失物資訊：
+資料庫登錄失物文字參考資訊（僅供最後比對階段參考，不可用於腦補第 2 張照片畫面）：
 - 物品名稱：{$item->title}
 - 物品分類：{$item->category}
 - 地點：{$item->location}
 - 補充說明：{$item->description}
 
-請嚴格只回傳純 JSON 格式（不要任何 markdown 標記或額外文字，confidence 必須是 0 到 100 的整數）：
+請嚴格按照下列 JSON 欄位順序輸出純 JSON（不得包含 markdown 標記或額外說明文字，先獨立填寫 image1_observation 與 image2_observation，最後再給出判斷結果與 0~100 整數 confidence）：
 {
-  "is_match": true,
-  "confidence": 90,
-  "reason": "使用繁體中文簡潔說明比對依據或不符合的原因"
+  "image1_observation": "客觀描述第 1 張圖實際看到的物品種類、顏色與外觀（若無第 1 張圖請填：無原失物照片）",
+  "image2_observation": "嚴格只描述第 2 張圖實際看到的畫面；若全黑、全白、純色、過暗、嚴重模糊或看不出明確物體，請如實寫出",
+  "is_match": false,
+  "confidence": 0,
+  "reason": "使用繁體中文對比兩張圖的觀察結果，說明相符或不相符的具體依據"
 }
 PROMPT;
 
@@ -999,7 +1132,7 @@ PROMPT;
                 'format' => 'json',
                 'options' => [
                     'temperature' => 0.0,
-                    'num_predict' => 512,
+                    'num_predict' => 640,
                 ],
             ]);
 
@@ -1017,7 +1150,7 @@ PROMPT;
                     'format' => 'json',
                     'options' => [
                         'temperature' => 0.0,
-                        'num_predict' => 512,
+                        'num_predict' => 640,
                     ],
                 ]);
 
@@ -1027,6 +1160,8 @@ PROMPT;
                 }
                 $rawText = trim((string) $genResponse->json('response', ''));
             }
+
+            Log::info("Ollama VLM 原始回覆 (Item #{$item->id}): " . $rawText);
 
             $cleanJson = trim(str_replace(['```json', '```', '`'], '', $rawText));
             $firstBrace = strpos($cleanJson, '{');
@@ -1042,22 +1177,23 @@ PROMPT;
                 return null;
             }
 
+            $image1Observation = trim((string) ($decoded['image1_observation'] ?? ''));
+            $image2Observation = trim((string) ($decoded['image2_observation'] ?? ''));
             $isMatch = filter_var($decoded['is_match'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-            $rawConf = $decoded['confidence'] ?? ($isMatch ? 80 : 0);
+            $rawConf = $decoded['confidence'] ?? 0;
             if (is_string($rawConf)) {
                 $rawConf = str_replace(['%', '分', ' '], '', $rawConf);
             }
-            $confFloat = is_numeric($rawConf) ? (float) $rawConf : ($isMatch ? 80.0 : 0.0);
+            $confFloat = is_numeric($rawConf) ? (float) $rawConf : 0.0;
             if ($confFloat > 0.0 && $confFloat <= 1.0) {
                 $confFloat *= 100.0;
             }
             $confidence = max(0, min(100, (int) round($confFloat)));
-            if ($isMatch && $confidence === 0) {
-                $confidence = 80;
-            }
 
             return [
+                'image1_observation' => $image1Observation,
+                'image2_observation' => $image2Observation,
                 'is_match' => $isMatch,
                 'confidence' => $confidence,
                 'reason' => trim((string) ($decoded['reason'] ?? 'VLM 已完成圖片比對。')),
