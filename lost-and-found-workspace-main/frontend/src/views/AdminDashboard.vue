@@ -18,6 +18,7 @@ const {
 
 const adminItems = ref([])
 const isLoading = ref(false)
+const isRefreshing = ref(false)
 const statusFilter = ref('active') // 'active' | 'manual' | 'completed' | 'all'
 const processingId = ref(null)
 
@@ -33,11 +34,13 @@ function showToast(title, message) {
   toast.show = true
 }
 
-async function fetchAdminItems() {
+async function fetchAdminItems(silent = false) {
   if (!isAdmin.value || !authToken.value) return
 
   try {
-    isLoading.value = true
+    if (!silent && adminItems.value.length === 0) {
+      isLoading.value = true
+    }
     const response = await fetch(`${API_BASE_URL}/admin/items`, {
       headers: {
         Accept: 'application/json',
@@ -46,7 +49,21 @@ async function fetchAdminItems() {
     })
     const data = await response.json()
     if (response.ok && data.success) {
-      adminItems.value = data.items || []
+      const incoming = data.items || []
+      const existingMap = new Map(adminItems.value.map((item) => [item.id, item]))
+      adminItems.value = incoming.map((nextItem) => {
+        const prev = existingMap.get(nextItem.id)
+        if (
+          prev &&
+          prev.updated_at === nextItem.updated_at &&
+          prev.review_status === nextItem.review_status &&
+          prev.vlm_fail_count === nextItem.vlm_fail_count &&
+          prev.claimant_email === nextItem.claimant_email
+        ) {
+          return prev
+        }
+        return nextItem
+      })
     } else {
       showToast('載入失敗', data.message || '無法取得後台管理清單')
     }
@@ -55,6 +72,16 @@ async function fetchAdminItems() {
     showToast('連線錯誤', '無法連線至後端伺服器')
   } finally {
     isLoading.value = false
+  }
+}
+
+async function refreshAdminItems() {
+  if (isRefreshing.value) return
+  try {
+    isRefreshing.value = true
+    await fetchAdminItems(true)
+  } finally {
+    isRefreshing.value = false
   }
 }
 
@@ -298,16 +325,17 @@ async function hardDeleteItem(item) {
 
           <button
             type="button"
-            class="rounded-xl px-4 py-2 text-xs font-bold transition sm:text-sm"
+            :disabled="isRefreshing"
+            class="rounded-xl px-4 py-2 text-xs font-bold transition sm:text-sm disabled:opacity-50 cursor-pointer"
             :class="isDarkMode ? 'bg-[#ff9000] text-[#000000] hover:bg-[#e07f00]' : 'bg-[#1e3a8a] text-white hover:bg-[#1e40af]'"
-            @click="fetchAdminItems"
+            @click="refreshAdminItems"
           >
-            🔄 重新整理清單
+            {{ isRefreshing ? '更新中...' : '🔄 重新整理' }}
           </button>
         </section>
 
         <!-- 失物審核列表 -->
-        <div v-if="isLoading" class="py-16 text-center text-sm opacity-70">正在載入失物與人工審核資料...</div>
+        <div v-if="isLoading && adminItems.length === 0" class="py-16 text-center text-sm opacity-70">正在載入失物與人工審核資料...</div>
 
         <div v-else-if="sortedAndFilteredItems.length === 0" class="py-16 text-center text-sm opacity-60">
           目前此分類沒有符合的失物資料。
